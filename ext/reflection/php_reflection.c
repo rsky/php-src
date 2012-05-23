@@ -1463,7 +1463,15 @@ static parameter_reference *_reflection_param_get_default_param(INTERNAL_FUNCTIO
 	reflection_object *intern;
 	parameter_reference *param;
 
-	GET_REFLECTION_OBJECT_PTR(param);
+	/* GET_REFLECTION_OBJECT_PTR(param); */
+	intern = (reflection_object *) zend_object_store_get_object(getThis() TSRMLS_CC);
+	if (intern == NULL || intern->ptr == NULL) {
+		if (EG(exception) && Z_OBJCE_P(EG(exception)) == reflection_exception_ptr) {
+			return NULL;
+		}
+		php_error_docref(NULL TSRMLS_CC, E_ERROR, "Internal error: Failed to retrieve the reflection object");
+	}
+	target = intern->ptr;
 
 	if (param->fptr->type != ZEND_USER_FUNCTION)
 	{
