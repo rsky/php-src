@@ -5174,6 +5174,26 @@ void zend_do_implements_trait(znode *trait_name TSRMLS_DC) /* {{{ */
 }
 /* }}} */
 
+void zend_do_begin_mixin_trait(znode *use_token TSRMLS_DC) /* {{{ */
+{
+	fprintf(stderr, "%s:%d\n", __FILE__, __LINE__);
+}
+/* }}} */
+
+void zend_do_end_mixin_trait(znode *new_object, const znode *use_token TSRMLS_DC) /* {{{ */
+{
+	fprintf(stderr, "%s:%d\n", __FILE__, __LINE__);
+}
+/* }}} */
+
+void zend_do_mixin_trait(znode *trait_name TSRMLS_DC) /* {{{ */
+{
+	zval *zv = &trait_name->u.constant;
+	fprintf(stderr, "%s:%d,op_type=%d,z_type=%d\n",
+			__FILE__, __LINE__, trait_name->op_type, Z_TYPE_P(zv));
+}
+/* }}} */
+
 ZEND_API void zend_mangle_property_name(char **dest, int *dest_length, const char *src1, int src1_length, const char *src2, int src2_length, int internal) /* {{{ */
 {
 	char *prop_name;

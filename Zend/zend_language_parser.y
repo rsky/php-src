@@ -50,7 +50,7 @@ static YYSIZE_T zend_yytnamerr(char*, const char*);
 %}
 
 %pure_parser
-%expect 3
+%expect 4
 
 %token END 0 "end of file"
 %left T_INCLUDE T_INCLUDE_ONCE T_EVAL T_REQUIRE T_REQUIRE_ONCE
@@ -718,6 +718,12 @@ instance_call:
 
 new_expr:
 		T_NEW class_name_reference { zend_do_extended_fcall_begin(TSRMLS_C); zend_do_begin_new_object(&$1, &$2 TSRMLS_CC); } ctor_arguments { zend_do_end_new_object(&$$, &$1, &$4 TSRMLS_CC); zend_do_extended_fcall_end(TSRMLS_C);}
+	|	T_NEW class_name_reference T_USE { zend_do_begin_mixin_trait(&$3 TSRMLS_CC); } mixin_list { zend_do_extended_fcall_begin(TSRMLS_C); zend_do_begin_new_object(&$1, &$2 TSRMLS_CC); } ctor_arguments { zend_do_end_new_object(&$$, &$1, &$7 TSRMLS_CC); zend_do_end_mixin_trait(&$$, &$3 TSRMLS_CC); zend_do_extended_fcall_end(TSRMLS_C);}
+;
+
+mixin_list:
+		class_name_reference { zend_do_mixin_trait(&$1 TSRMLS_CC); }
+	|	mixin_list ',' class_name_reference { zend_do_mixin_trait(&$3 TSRMLS_CC); }
 ;
 
 expr_without_variable:
