@@ -21,6 +21,8 @@ PHP X.Y UPGRADE NOTES
 ========================================
 
 - Drop Windows XP and 2003 support. (Pierre)
+- All internal case insensitivity handling for class, function and constant 
+  names is done according to ASCII rules, current locale settings are ignored. 
 
 ========================================
 2. New Features
@@ -96,6 +98,9 @@ PHP X.Y UPGRADE NOTES
 
 - Core:
   - boolval()
+
+- Hash:
+  - hash_pbkdf2()
 
 - Intl:
   - datefmt_get_calendar_object()
@@ -188,6 +193,9 @@ PHP X.Y UPGRADE NOTES
   - IntlCalendar
   - IntlGregorianCalendar
   - IntlTimeZone
+  - IntlBreakIterator
+  - IntlRuleBasedBreakIterator
+  - IntlCodePointBreakIterator
 
 ========================================
 7. Removed Extensions
