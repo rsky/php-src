@@ -13,6 +13,7 @@ PHP                                                                        NEWS
 
 - Core:
   . Added boolval(). (Jille Timmermans).
+  . Fixed bug #18556 (Engine uses locale rules to handle class names). (Stas)
   . Fixed bug #61681 (Malformed grammar). (Nikita Popov, Etienne, Laruence).
   . Fixed bug #61038 (unpack("a5", "str\0\0") does not work as expected).
     (srgoogleguy, Gustavo)
@@ -41,6 +42,9 @@ PHP                                                                        NEWS
   . Fixed bug #55635 (CURLOPT_BINARYTRANSFER no longer used. The constant
 	still exists for backward compatibility but is doing nothing). (Pierrick)
   . Fixed bug #54995 (Missing CURLINFO_RESPONSE_CODE support). (Pierrick)
+
+- Hash
+  . Added support for PBKDF2 via hash_pbkdf2(). (Anthony Ferrara)
 
 - MySQLi
   . Dropped support for LOAD DATA LOCAL INFILE handlers when using libmysql.
