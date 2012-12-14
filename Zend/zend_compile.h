@@ -477,10 +477,13 @@ void zend_do_while_end(const znode *while_token, const znode *close_bracket_toke
 void zend_do_do_while_begin(TSRMLS_D);
 void zend_do_do_while_end(const znode *do_token, const znode *expr_open_bracket, const znode *expr TSRMLS_DC);
 
+void zend_do_until_cond(const znode *expr, znode *close_bracket_token TSRMLS_DC);
 
 void zend_do_if_cond(const znode *cond, znode *closing_bracket_token TSRMLS_DC);
 void zend_do_if_after_statement(const znode *closing_bracket_token, unsigned char initialize TSRMLS_DC);
 void zend_do_if_end(TSRMLS_D);
+
+void zend_do_unless_cond(const znode *cond, znode *closing_bracket_token TSRMLS_DC);
 
 void zend_do_for_cond(const znode *expr, znode *second_semicolon_token TSRMLS_DC);
 void zend_do_for_before_statement(const znode *cond_start, const znode *second_semicolon_token TSRMLS_DC);

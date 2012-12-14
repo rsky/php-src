@@ -121,6 +121,7 @@ static YYSIZE_T zend_yytnamerr(char*, const char*);
 %token T_NEW       "new (T_NEW)"
 %token T_CLONE     "clone (T_CLONE)"
 %token T_EXIT      "exit (T_EXIT)"
+%token T_UNLESS    "unless (T_UNLESS)"
 %token T_IF        "if (T_IF)"
 %left T_ELSEIF
 %token T_ELSEIF    "elseif (T_ELSEIF)"
@@ -141,6 +142,7 @@ static YYSIZE_T zend_yytnamerr(char*, const char*);
 %token T_CONSTANT_ENCAPSED_STRING "quoted-string (T_CONSTANT_ENCAPSED_STRING)"
 %token T_ECHO       "echo (T_ECHO)"
 %token T_DO         "do (T_DO)"
+%token T_UNTIL      "until (T_UNTIL)"
 %token T_WHILE      "while (T_WHILE)"
 %token T_ENDWHILE   "endwhile (T_ENDWHILE)"
 %token T_FOR        "for (T_FOR)"
@@ -279,8 +281,10 @@ statement:
 
 unticked_statement:
 		'{' inner_statement_list '}'
+	|	T_UNLESS parenthesis_expr { zend_do_unless_cond(&$2, &$1 TSRMLS_CC); } statement { zend_do_if_after_statement(&$1, 1 TSRMLS_CC); } elseif_list else_single { zend_do_if_end(TSRMLS_C); }
 	|	T_IF parenthesis_expr { zend_do_if_cond(&$2, &$1 TSRMLS_CC); } statement { zend_do_if_after_statement(&$1, 1 TSRMLS_CC); } elseif_list else_single { zend_do_if_end(TSRMLS_C); }
 	|	T_IF parenthesis_expr ':' { zend_do_if_cond(&$2, &$1 TSRMLS_CC); } inner_statement_list { zend_do_if_after_statement(&$1, 1 TSRMLS_CC); } new_elseif_list new_else_single T_ENDIF ';' { zend_do_if_end(TSRMLS_C); }
+	|	T_UNTIL { $1.u.op.opline_num = get_next_op_number(CG(active_op_array)); } parenthesis_expr { zend_do_until_cond(&$3, &$$ TSRMLS_CC); } while_statement { zend_do_while_end(&$1, &$4 TSRMLS_CC); }
 	|	T_WHILE { $1.u.op.opline_num = get_next_op_number(CG(active_op_array)); } parenthesis_expr { zend_do_while_cond(&$3, &$$ TSRMLS_CC); } while_statement { zend_do_while_end(&$1, &$4 TSRMLS_CC); }
 	|	T_DO { $1.u.op.opline_num = get_next_op_number(CG(active_op_array));  zend_do_do_while_begin(TSRMLS_C); } statement T_WHILE { $4.u.op.opline_num = get_next_op_number(CG(active_op_array)); } parenthesis_expr ';' { zend_do_do_while_end(&$1, &$4, &$6 TSRMLS_CC); }
 	|	T_FOR
