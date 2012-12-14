@@ -475,7 +475,7 @@ ZEND_API binary_op_type get_binary_op(int opcode);
 void zend_do_while_cond(const znode *expr, znode *close_bracket_token TSRMLS_DC);
 void zend_do_while_end(const znode *while_token, const znode *close_bracket_token TSRMLS_DC);
 void zend_do_do_while_begin(TSRMLS_D);
-void zend_do_do_while_end(const znode *do_token, const znode *expr_open_bracket, const znode *expr TSRMLS_DC);
+void zend_do_do_while_or_until_end(const znode *do_token, const znode *expr_open_bracket, const znode *expr TSRMLS_DC);
 
 void zend_do_until_cond(const znode *expr, znode *close_bracket_token TSRMLS_DC);
 

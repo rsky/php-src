@@ -4935,11 +4935,15 @@ void zend_do_do_while_begin(TSRMLS_D) /* {{{ */
 }
 /* }}} */
 
-void zend_do_do_while_end(const znode *do_token, const znode *expr_open_bracket, const znode *expr TSRMLS_DC) /* {{{ */
+void zend_do_do_while_or_until_end(const znode *do_token, const znode *expr_open_bracket, const znode *expr TSRMLS_DC) /* {{{ */
 {
 	zend_op *opline = get_next_op(CG(active_op_array) TSRMLS_CC);
 
-	opline->opcode = ZEND_JMPNZ;
+	if (expr_open_bracket->EA == T_UNTIL) {
+		opline->opcode = ZEND_JMPZ;
+	} else {
+		opline->opcode = ZEND_JMPNZ;
+	}
 	SET_NODE(opline->op1, expr);
 	opline->op2.opline_num = do_token->u.op.opline_num;
 	SET_UNUSED(opline->op2);

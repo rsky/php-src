@@ -279,6 +279,11 @@ statement:
 	|	T_STRING ':' { zend_do_label(&$1 TSRMLS_CC); }
 ;
 
+while_or_until:
+		T_WHILE { $$.EA = T_WHILE; }
+	|	T_UNTIL { $$.EA = T_UNTIL; }
+;
+
 unticked_statement:
 		'{' inner_statement_list '}'
 	|	T_UNLESS parenthesis_expr { zend_do_unless_cond(&$2, &$1 TSRMLS_CC); } statement { zend_do_if_after_statement(&$1, 1 TSRMLS_CC); } elseif_list else_single { zend_do_if_end(TSRMLS_C); }
@@ -286,7 +291,8 @@ unticked_statement:
 	|	T_IF parenthesis_expr ':' { zend_do_if_cond(&$2, &$1 TSRMLS_CC); } inner_statement_list { zend_do_if_after_statement(&$1, 1 TSRMLS_CC); } new_elseif_list new_else_single T_ENDIF ';' { zend_do_if_end(TSRMLS_C); }
 	|	T_UNTIL { $1.u.op.opline_num = get_next_op_number(CG(active_op_array)); } parenthesis_expr { zend_do_until_cond(&$3, &$$ TSRMLS_CC); } while_statement { zend_do_while_end(&$1, &$4 TSRMLS_CC); }
 	|	T_WHILE { $1.u.op.opline_num = get_next_op_number(CG(active_op_array)); } parenthesis_expr { zend_do_while_cond(&$3, &$$ TSRMLS_CC); } while_statement { zend_do_while_end(&$1, &$4 TSRMLS_CC); }
-	|	T_DO { $1.u.op.opline_num = get_next_op_number(CG(active_op_array));  zend_do_do_while_begin(TSRMLS_C); } statement T_WHILE { $4.u.op.opline_num = get_next_op_number(CG(active_op_array)); } parenthesis_expr ';' { zend_do_do_while_end(&$1, &$4, &$6 TSRMLS_CC); }
+	|	T_DO { $1.u.op.opline_num = get_next_op_number(CG(active_op_array));  zend_do_do_while_begin(TSRMLS_C); } statement while_or_until
+			{ $4.u.op.opline_num = get_next_op_number(CG(active_op_array)); } parenthesis_expr ';' { zend_do_do_while_or_until_end(&$1, &$4, &$6 TSRMLS_CC); }
 	|	T_FOR
 			'('
 				for_expr
