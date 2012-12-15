@@ -1088,27 +1088,16 @@ static inline void do_end_loop(int cont_addr, int has_loop_var TSRMLS_DC) /* {{{
 }
 /* }}} */
 
-void zend_do_until_cond(const znode *expr, znode *close_bracket_token TSRMLS_DC) /* {{{ */
+void zend_do_while_or_until_cond(const znode *expr, znode *close_bracket_token, int is_until TSRMLS_DC) /* {{{ */
 {
 	int while_cond_op_number = get_next_op_number(CG(active_op_array));
 	zend_op *opline = get_next_op(CG(active_op_array) TSRMLS_CC);
 
-	opline->opcode = ZEND_JMPNZ;
-	SET_NODE(opline->op1, expr);
-	close_bracket_token->u.op.opline_num = while_cond_op_number;
-	SET_UNUSED(opline->op2);
-
-	do_begin_loop(TSRMLS_C);
-	INC_BPC(CG(active_op_array));
-}
-/* }}} */
-
-void zend_do_while_cond(const znode *expr, znode *close_bracket_token TSRMLS_DC) /* {{{ */
-{
-	int while_cond_op_number = get_next_op_number(CG(active_op_array));
-	zend_op *opline = get_next_op(CG(active_op_array) TSRMLS_CC);
-
-	opline->opcode = ZEND_JMPZ;
+	if (is_until) {
+		opline->opcode = ZEND_JMPNZ;
+	} else {
+		opline->opcode = ZEND_JMPZ;
+	}
 	SET_NODE(opline->op1, expr);
 	close_bracket_token->u.op.opline_num = while_cond_op_number;
 	SET_UNUSED(opline->op2);
@@ -1235,25 +1224,16 @@ void zend_do_post_incdec(znode *result, const znode *op1, zend_uchar op TSRMLS_D
 }
 /* }}} */
 
-void zend_do_unless_cond(const znode *cond, znode *closing_bracket_token TSRMLS_DC) /* {{{ */
+void zend_do_if_or_unless_cond(const znode *cond, znode *closing_bracket_token, int is_unless TSRMLS_DC) /* {{{ */
 {
 	int if_cond_op_number = get_next_op_number(CG(active_op_array));
 	zend_op *opline = get_next_op(CG(active_op_array) TSRMLS_CC);
 
-	opline->opcode = ZEND_JMPNZ;
-	SET_NODE(opline->op1, cond);
-	closing_bracket_token->u.op.opline_num = if_cond_op_number;
-	SET_UNUSED(opline->op2);
-	INC_BPC(CG(active_op_array));
-}
-/* }}} */
-
-void zend_do_if_cond(const znode *cond, znode *closing_bracket_token TSRMLS_DC) /* {{{ */
-{
-	int if_cond_op_number = get_next_op_number(CG(active_op_array));
-	zend_op *opline = get_next_op(CG(active_op_array) TSRMLS_CC);
-
-	opline->opcode = ZEND_JMPZ;
+	if (is_unless) {
+		opline->opcode = ZEND_JMPNZ;
+	} else {
+		opline->opcode = ZEND_JMPZ;
+	}
 	SET_NODE(opline->op1, cond);
 	closing_bracket_token->u.op.opline_num = if_cond_op_number;
 	SET_UNUSED(opline->op2);

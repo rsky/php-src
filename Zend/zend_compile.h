@@ -470,18 +470,34 @@ typedef int (*binary_op_type)(zval *, zval *, zval * TSRMLS_DC);
 ZEND_API unary_op_type get_unary_op(int opcode);
 ZEND_API binary_op_type get_binary_op(int opcode);
 
-void zend_do_while_cond(const znode *expr, znode *close_bracket_token TSRMLS_DC);
+void zend_do_while_or_until_cond(const znode *expr, znode *close_bracket_token, int is_until TSRMLS_DC);
 void zend_do_while_end(const znode *while_token, const znode *close_bracket_token TSRMLS_DC);
 void zend_do_do_while_begin(TSRMLS_D);
 void zend_do_do_while_or_until_end(const znode *do_token, const znode *expr_open_bracket, const znode *expr TSRMLS_DC);
 
-void zend_do_until_cond(const znode *expr, znode *close_bracket_token TSRMLS_DC);
+static zend_always_inline void zend_do_while_cond(const znode *expr, znode *close_bracket_token TSRMLS_DC)
+{
+	zend_do_while_or_until_cond(expr, close_bracket_token, 0 TSRMLS_CC);
+}
 
-void zend_do_if_cond(const znode *cond, znode *closing_bracket_token TSRMLS_DC);
+static zend_always_inline void zend_do_until_cond(const znode *expr, znode *close_bracket_token TSRMLS_DC)
+{
+	zend_do_while_or_until_cond(expr, close_bracket_token, 1 TSRMLS_CC);
+}
+
+void zend_do_if_or_unless_cond(const znode *cond, znode *closing_bracket_token, int is_unless TSRMLS_DC);
 void zend_do_if_after_statement(const znode *closing_bracket_token, unsigned char initialize TSRMLS_DC);
 void zend_do_if_end(TSRMLS_D);
 
-void zend_do_unless_cond(const znode *cond, znode *closing_bracket_token TSRMLS_DC);
+static zend_always_inline void zend_do_if_cond(const znode *cond, znode *closing_bracket_token TSRMLS_DC)
+{
+    zend_do_if_or_unless_cond(cond, closing_bracket_token, 0 TSRMLS_CC);
+}
+
+static zend_always_inline void zend_do_unless_cond(const znode *cond, znode *closing_bracket_token TSRMLS_DC)
+{
+    zend_do_if_or_unless_cond(cond, closing_bracket_token, 1 TSRMLS_CC);
+}
 
 void zend_do_for_cond(const znode *expr, znode *second_semicolon_token TSRMLS_DC);
 void zend_do_for_before_statement(const znode *cond_start, const znode *second_semicolon_token TSRMLS_DC);
