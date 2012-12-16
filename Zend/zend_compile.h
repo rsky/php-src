@@ -538,7 +538,7 @@ void zend_add_trait_precedence(znode *precedence_znode TSRMLS_DC);
 void zend_add_trait_alias(znode *alias_znode TSRMLS_DC);
 
 void zend_do_begin_mixin_trait(znode *use_token TSRMLS_DC);
-void zend_do_end_mixin_trait(znode *new_object, const znode *use_token TSRMLS_DC);
+void zend_do_end_mixin_trait(znode *result, znode *class_name, znode *use_token TSRMLS_DC);
 void zend_do_mixin_trait(znode *trait_name TSRMLS_DC);
 
 void zend_do_implements_trait(znode *interface_znode /*, znode* aliases */ TSRMLS_DC);

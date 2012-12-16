@@ -5338,9 +5338,11 @@ void zend_do_begin_mixin_trait(znode *use_token TSRMLS_DC) /* {{{ */
 }
 /* }}} */
 
-void zend_do_end_mixin_trait(znode *new_object, const znode *use_token TSRMLS_DC) /* {{{ */
+void zend_do_end_mixin_trait(znode *result, znode *class_name, znode *use_token TSRMLS_DC) /* {{{ */
 {
-	fprintf(stderr, "%s:%d\n", __FILE__, __LINE__);
+	zval *zv = &class_name->u.constant;
+	fprintf(stderr, "%s:%d,op_type=%d,z_type=%d\n",
+			__FILE__, __LINE__, class_name->op_type, Z_TYPE_P(zv));
 }
 /* }}} */
 
