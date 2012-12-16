@@ -5332,25 +5332,118 @@ void zend_do_implements_trait(znode *trait_name TSRMLS_DC) /* {{{ */
 }
 /* }}} */
 
-void zend_do_begin_mixin_trait(znode *use_token TSRMLS_DC) /* {{{ */
+void zend_do_begin_mixin(znode *use_token TSRMLS_DC) /* {{{ */
 {
-	fprintf(stderr, "%s:%d\n", __FILE__, __LINE__);
+	zend_op *opline;
+
+	opline = get_next_op(CG(active_op_array) TSRMLS_CC);
+	opline->opcode = ZEND_BEGIN_MIXIN;
+	SET_UNUSED(opline->op1);
+	SET_UNUSED(opline->op2);
 }
 /* }}} */
 
-void zend_do_end_mixin_trait(znode *result, znode *class_name, znode *use_token TSRMLS_DC) /* {{{ */
+void zend_do_add_mixin_trait(znode *mixin_list, znode *trait_type TSRMLS_DC) /* {{{ */
 {
-	zval *zv = &class_name->u.constant;
-	fprintf(stderr, "%s:%d,op_type=%d,z_type=%d\n",
-			__FILE__, __LINE__, class_name->op_type, Z_TYPE_P(zv));
+	zend_op *opline;
+
+	opline = get_next_op(CG(active_op_array) TSRMLS_CC);
+	opline->opcode = ZEND_ADD_MIXIN_TRAIT;
+	SET_NODE(opline->op1, trait_type);
+	SET_UNUSED(opline->op2);
 }
 /* }}} */
 
-void zend_do_mixin_trait(znode *trait_name TSRMLS_DC) /* {{{ */
+void zend_do_end_mixin(znode *result, znode *class_type, znode *use_token TSRMLS_DC) /* {{{ */
 {
-	zval *zv = &trait_name->u.constant;
-	fprintf(stderr, "%s:%d,op_type=%d,z_type=%d\n",
-			__FILE__, __LINE__, trait_name->op_type, Z_TYPE_P(zv));
+	zend_op *opline;
+
+	opline = get_next_op(CG(active_op_array) TSRMLS_CC);
+	opline->opcode = ZEND_END_MIXIN;
+	SET_NODE(opline->op1, class_type);
+	SET_UNUSED(opline->op2);
+	opline->result.var = get_temporary_variable(CG(active_op_array));
+	opline->result_type = IS_VAR; /* FIXME: Hack so that INIT_FCALL_BY_NAME still knows this is a class */
+	GET_NODE(result, opline->result);
+}
+/* }}} */
+
+static char *zend_mixin_class_name(zend_class_entry *ce, HashTable *mixin_table, uint *length TSRMLS_DC) /* {{{ */
+{
+	char *new_class_name = estrndup(ce->name, ce->name_length);
+	uint new_class_name_length = ce->name_length;
+	zend_class_entry **pce = NULL;
+
+	for (zend_hash_internal_pointer_reset(mixin_table);
+	zend_hash_get_current_data(mixin_table, (void **)&pce) == SUCCESS;
+	zend_hash_move_forward(mixin_table)) {
+		zend_class_entry *trait = *pce;
+
+		new_class_name = (char *)erealloc(new_class_name, new_class_name_length + 1 + trait->name_length + 1);
+		new_class_name[new_class_name_length] = '+';
+		memcpy(new_class_name + new_class_name_length + 1, trait->name, trait->name_length + 1);
+		new_class_name_length = new_class_name_length + 1 + trait->name_length;
+	}
+
+	if (length) {
+		*length = new_class_name_length;
+	}
+
+	return new_class_name;
+}
+/* }}} */
+
+ZEND_API zend_class_entry *zend_mixin_traits(zend_class_entry *ce, HashTable *mixin_table TSRMLS_DC) /* {{{ */
+{
+	zend_class_entry *new_class_entry;
+	uint new_class_name_length = 0;
+	char *new_class_name;
+	zend_class_entry **pce = NULL;
+
+	if ((ce->ce_flags & ZEND_ACC_TRAIT) == ZEND_ACC_TRAIT) {
+		zend_error(E_ERROR, "Cannot mix-in to trait (%s)", ce->name);
+		return NULL;
+	}
+	if ((ce->ce_flags & ZEND_ACC_INTERFACE) == ZEND_ACC_INTERFACE) {
+		zend_error(E_ERROR, "Cannot mix-in to interface (%s)", ce->name);
+		return NULL;
+	}
+	if ((ce->ce_flags & ZEND_ACC_FINAL_CLASS) == ZEND_ACC_FINAL_CLASS) {
+		zend_error(E_ERROR, "Cannot mix-in to final class (%s)", ce->name);
+		return NULL;
+	}
+
+	new_class_name = zend_mixin_class_name(ce, mixin_table, &new_class_name_length TSRMLS_CC);
+	new_class_entry = zend_fetch_class(new_class_name, new_class_name_length, ZEND_FETCH_CLASS_NO_AUTOLOAD | ZEND_FETCH_CLASS_SILENT TSRMLS_CC);
+	if (new_class_entry) {
+		efree(new_class_name);
+		return new_class_entry;
+	}
+
+	new_class_entry = (zend_class_entry *)emalloc(sizeof(zend_class_entry));
+	new_class_entry->type = ZEND_USER_CLASS;
+	new_class_entry->name = new_class_name;
+	new_class_entry->name_length = new_class_name_length;
+
+	zend_initialize_class_data(new_class_entry, 1 TSRMLS_CC);
+	if (zend_is_compiling(TSRMLS_C)) {
+		new_class_entry->info.user.filename = zend_get_compiled_filename(TSRMLS_C);
+		new_class_entry->info.user.line_start = zend_get_compiled_lineno(TSRMLS_C);
+	} else if (zend_is_executing(TSRMLS_C)) {
+		new_class_entry->info.user.filename = zend_get_executed_filename(TSRMLS_C);
+		new_class_entry->info.user.line_start = zend_get_executed_lineno(TSRMLS_C);
+	}
+
+	zend_do_inheritance(new_class_entry, ce TSRMLS_CC);
+	for (zend_hash_internal_pointer_reset(mixin_table);
+	zend_hash_get_current_data(mixin_table, (void **)&pce) == SUCCESS;
+	zend_hash_move_forward(mixin_table)) {
+		zend_do_implement_trait(new_class_entry, *pce TSRMLS_CC);
+	}
+
+	zend_do_traits_method_binding(new_class_entry TSRMLS_CC);
+
+	return new_class_entry;
 }
 /* }}} */
 

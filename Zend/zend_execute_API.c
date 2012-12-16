@@ -166,6 +166,8 @@ void init_executor(TSRMLS_D) /* {{{ */
 
 	zend_hash_init(&EG(included_files), 5, NULL, NULL, 0);
 
+	zend_hash_init(&EG(active_mixin_table), 5, NULL, ZEND_CLASS_DTOR, 0);
+
 	EG(ticks_count) = 0;
 
 	EG(user_error_handler) = NULL;
@@ -321,6 +323,7 @@ void shutdown_executor(TSRMLS_D) /* {{{ */
 	signal(SIGSEGV, original_sigsegv_handler);
 #endif
 
+		zend_hash_destroy(&EG(active_mixin_table));
 		zend_hash_destroy(&EG(included_files));
 
 		zend_stack_destroy(&EG(user_error_handlers_error_reporting));

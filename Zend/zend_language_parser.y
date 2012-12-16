@@ -882,12 +882,12 @@ fully_qualified_class_name:
 
 mixin_class_name_reference:
 		class_name_reference { $$ = $1; }
-	|	class_name_reference T_USE { zend_do_begin_mixin_trait(&$2 TSRMLS_CC); } mixin_list { zend_do_end_mixin_trait(&$$, &$1, &$2 TSRMLS_CC); }
+	|	class_name_reference T_USE { zend_do_begin_mixin(&$2 TSRMLS_CC); } mixin_list { zend_do_end_mixin(&$$, &$1, &$2 TSRMLS_CC); }
 ;
 
 mixin_list:
-		class_name_reference { zend_do_mixin_trait(&$1 TSRMLS_CC); }
-	|	mixin_list ',' class_name_reference { zend_do_mixin_trait(&$3 TSRMLS_CC); }
+		class_name_reference { zend_do_add_mixin_trait(&$$, &$1 TSRMLS_CC); }
+	|	mixin_list ',' class_name_reference { zend_do_add_mixin_trait(&$$, &$3 TSRMLS_CC); }
 ;
 
 class_name_reference:

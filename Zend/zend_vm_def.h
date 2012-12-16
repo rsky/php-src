@@ -5437,4 +5437,57 @@ ZEND_VM_HANDLER(163, ZEND_FAST_RET, ANY, ANY)
 	}
 }
 
+ZEND_VM_HANDLER(164, ZEND_BEGIN_MIXIN, ANY, ANY)
+{
+	USE_OPLINE
+	SAVE_OPLINE();
+	zend_hash_clean(&EG(active_mixin_table));
+	CHECK_EXCEPTION();
+	ZEND_VM_NEXT_OPCODE();
+}
+
+ZEND_VM_HANDLER(165, ZEND_ADD_MIXIN_TRAIT, ANY, ANY)
+{
+	USE_OPLINE
+	zend_class_entry *ce = EX_T(opline->op1.var).class_entry;
+
+	SAVE_OPLINE();
+	if (EG(exception)) {
+		zend_exception_save(TSRMLS_C);
+	}
+
+	if ((ce->ce_flags & ZEND_ACC_TRAIT) == ZEND_ACC_TRAIT) {
+		char *lowercase_name = zend_str_tolower_dup(ce->name, ce->name_length);
+		if (zend_hash_update(&EG(active_mixin_table), lowercase_name, ce->name_length + 1, &ce, sizeof(zend_class_entry *), NULL) == SUCCESS) {
+			ce->refcount++;
+		}
+		efree(lowercase_name);
+	} else if ((ce->ce_flags & ZEND_ACC_INTERFACE) == ZEND_ACC_INTERFACE) {
+		zend_error_noreturn(E_ERROR, "Cannot mix-in interface %s", ce->name);
+	} else {
+		zend_error_noreturn(E_ERROR, "Cannot mix-in class %s", ce->name);
+	}
+
+	CHECK_EXCEPTION();
+	ZEND_VM_NEXT_OPCODE();
+}
+
+ZEND_VM_HANDLER(166, ZEND_END_MIXIN, ANY, ANY)
+{
+	USE_OPLINE
+	zend_class_entry *ce = EX_T(opline->op1.var).class_entry;
+
+	SAVE_OPLINE();
+	if (EG(exception)) {
+		zend_exception_save(TSRMLS_C);
+	}
+
+	EX_T(opline->result.var).class_entry = zend_mixin_traits(ce, &EG(active_mixin_table) TSRMLS_CC);
+
+	zend_hash_clean(&EG(active_mixin_table));
+
+	CHECK_EXCEPTION();
+	ZEND_VM_NEXT_OPCODE();
+}
+
 ZEND_VM_EXPORT_HELPER(zend_do_fcall, zend_do_fcall_common_helper)
