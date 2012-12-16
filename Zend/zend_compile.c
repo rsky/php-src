@@ -5454,6 +5454,7 @@ ZEND_API zend_class_entry *zend_mixin_traits(zend_class_entry *ce, HashTable *mi
 	efree(lcname);
 
 	zend_do_inheritance(new_class_entry, ce TSRMLS_CC);
+
 	for (zend_hash_internal_pointer_reset(mixin_table);
 	zend_hash_get_current_data(mixin_table, (void **)&pce) == SUCCESS;
 	zend_hash_move_forward(mixin_table)) {
