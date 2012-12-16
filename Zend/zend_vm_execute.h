@@ -1185,11 +1185,11 @@ static int ZEND_FASTCALL  ZEND_ADD_MIXIN_TRAIT_SPEC_HANDLER(ZEND_OPCODE_HANDLER_
 	}
 
 	if ((ce->ce_flags & ZEND_ACC_TRAIT) == ZEND_ACC_TRAIT) {
-		char *lowercase_name = zend_str_tolower_dup(ce->name, ce->name_length);
-		if (zend_hash_update(&EG(active_mixin_table), lowercase_name, ce->name_length + 1, &ce, sizeof(zend_class_entry *), NULL) == SUCCESS) {
+		char *lcname = zend_str_tolower_dup(ce->name, ce->name_length);
+		if (zend_hash_update(&EG(active_mixin_table), lcname, ce->name_length + 1, &ce, sizeof(zend_class_entry *), NULL) == SUCCESS) {
 			ce->refcount++;
 		}
-		efree(lowercase_name);
+		efree(lcname);
 	} else if ((ce->ce_flags & ZEND_ACC_INTERFACE) == ZEND_ACC_INTERFACE) {
 		zend_error_noreturn(E_ERROR, "Cannot mix-in interface %s", ce->name);
 	} else {

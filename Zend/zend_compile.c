@@ -5332,7 +5332,7 @@ void zend_do_implements_trait(znode *trait_name TSRMLS_DC) /* {{{ */
 }
 /* }}} */
 
-void zend_do_begin_mixin(znode *use_token TSRMLS_DC) /* {{{ */
+void zend_do_begin_mixin(TSRMLS_D) /* {{{ */
 {
 	zend_op *opline;
 
@@ -5343,7 +5343,7 @@ void zend_do_begin_mixin(znode *use_token TSRMLS_DC) /* {{{ */
 }
 /* }}} */
 
-void zend_do_add_mixin_trait(znode *mixin_list, znode *trait_type TSRMLS_DC) /* {{{ */
+void zend_do_add_mixin_trait(znode *trait_type TSRMLS_DC) /* {{{ */
 {
 	zend_op *opline;
 
@@ -5354,7 +5354,7 @@ void zend_do_add_mixin_trait(znode *mixin_list, znode *trait_type TSRMLS_DC) /* 
 }
 /* }}} */
 
-void zend_do_end_mixin(znode *result, znode *class_type, znode *use_token TSRMLS_DC) /* {{{ */
+void zend_do_end_mixin(znode *result, znode *class_type TSRMLS_DC) /* {{{ */
 {
 	zend_op *opline;
 

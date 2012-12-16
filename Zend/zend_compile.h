@@ -537,9 +537,9 @@ void zend_do_implements_interface(znode *interface_znode TSRMLS_DC);
 void zend_add_trait_precedence(znode *precedence_znode TSRMLS_DC);
 void zend_add_trait_alias(znode *alias_znode TSRMLS_DC);
 
-void zend_do_begin_mixin(znode *use_token TSRMLS_DC);
-void zend_do_add_mixin_trait(znode *mixin_list, znode *trait_name TSRMLS_DC);
-void zend_do_end_mixin(znode *result, znode *class_name, znode *use_token TSRMLS_DC);
+void zend_do_begin_mixin(TSRMLS_D);
+void zend_do_add_mixin_trait(znode *trait_type TSRMLS_DC);
+void zend_do_end_mixin(znode *result, znode *class_type TSRMLS_DC);
 
 ZEND_API zend_class_entry *zend_mixin_traits(zend_class_entry *ce, HashTable *mixin_table TSRMLS_DC);
 
