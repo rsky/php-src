@@ -5424,8 +5424,9 @@ ZEND_API zend_class_entry *zend_mixin_traits(zend_class_entry *ce, HashTable *mi
 	}
 
 	new_class_name = zend_mixin_class_name(ce, mixin_table, &new_class_name_length TSRMLS_CC);
-	new_class_entry = zend_fetch_class(new_class_name, new_class_name_length, ZEND_FETCH_CLASS_NO_AUTOLOAD | ZEND_FETCH_CLASS_SILENT TSRMLS_CC);
-	if (new_class_entry) {
+	lcname = zend_str_tolower_dup(new_class_name, new_class_name_length);
+	if (zend_hash_find(EG(class_table), lcname, new_class_name_length + 1, (void **)&new_class_entry) == SUCCESS) {
+		efree(lcname);
 		efree(new_class_name);
 		return new_class_entry;
 	}
@@ -5444,7 +5445,6 @@ ZEND_API zend_class_entry *zend_mixin_traits(zend_class_entry *ce, HashTable *mi
 		new_class_entry->info.user.line_start = zend_get_executed_lineno(TSRMLS_C);
 	}
 
-	lcname = zend_str_tolower_dup(new_class_name, new_class_name_length);
 	if (zend_hash_add(EG(class_table), lcname, new_class_name_length + 1, (void *)&new_class_entry, sizeof(zend_class_entry *), NULL) == FAILURE) {
 		efree(lcname);
 		destroy_zend_class(&new_class_entry);
