@@ -5457,9 +5457,11 @@ ZEND_VM_HANDLER(165, ZEND_ADD_MIXIN_TRAIT, ANY, ANY)
 	}
 
 	if ((ce->ce_flags & ZEND_ACC_TRAIT) == ZEND_ACC_TRAIT) {
-		char *lcname = zend_str_tolower_dup(ce->name, ce->name_length);
-		zend_hash_update(&EG(active_mixin_table), lcname, ce->name_length + 1, (void *)&ce, sizeof(zend_class_entry *), NULL);
-		efree(lcname);
+		if (IS_INTERNED(ce->name)) {
+			zend_hash_quick_update(&EG(active_mixin_table), ce->name, ce->name_length + 1, INTERNED_HASH(ce->name), (void *)&ce, sizeof(zend_class_entry *), NULL);
+		} else {
+			zend_hash_update(&EG(active_mixin_table), ce->name, ce->name_length + 1, (void *)&ce, sizeof(zend_class_entry *), NULL);
+		}
 	} else if ((ce->ce_flags & ZEND_ACC_INTERFACE) == ZEND_ACC_INTERFACE) {
 		zend_error_noreturn(E_ERROR, "Cannot mix-in interface %s", ce->name);
 	} else {
