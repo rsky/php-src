@@ -5370,20 +5370,30 @@ void zend_do_end_mixin(znode *result, znode *class_type, znode *use_token TSRMLS
 
 static char *zend_mixin_class_name(zend_class_entry *ce, HashTable *mixin_table, uint *length TSRMLS_DC) /* {{{ */
 {
-	char *new_class_name = estrndup(ce->name, ce->name_length);
+	char *new_class_name, *ptr;
 	uint new_class_name_length = ce->name_length;
 	zend_class_entry **pce = NULL;
 
 	for (zend_hash_internal_pointer_reset(mixin_table);
 	zend_hash_get_current_data(mixin_table, (void **)&pce) == SUCCESS;
 	zend_hash_move_forward(mixin_table)) {
-		zend_class_entry *trait = *pce;
-
-		new_class_name = (char *)erealloc(new_class_name, new_class_name_length + 1 + trait->name_length + 1);
-		new_class_name[new_class_name_length] = '+';
-		memcpy(new_class_name + new_class_name_length + 1, trait->name, trait->name_length + 1);
-		new_class_name_length = new_class_name_length + 1 + trait->name_length;
+		new_class_name_length += 1 + (*pce)->name_length;
 	}
+
+	new_class_name = (char *)emalloc(new_class_name_length + 1);
+	memcpy(new_class_name, ce->name, ce->name_length);
+	ptr = new_class_name + ce->name_length;
+
+	for (zend_hash_internal_pointer_reset(mixin_table);
+	zend_hash_get_current_data(mixin_table, (void **)&pce) == SUCCESS;
+	zend_hash_move_forward(mixin_table)) {
+		zend_class_entry *trait = *pce;
+		*ptr++ = '+';
+		memcpy(ptr, trait->name, trait->name_length);
+		ptr += trait->name_length;
+	}
+
+	*ptr = '\0';
 
 	if (length) {
 		*length = new_class_name_length;
