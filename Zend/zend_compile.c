@@ -5397,7 +5397,7 @@ ZEND_API zend_class_entry *zend_mixin_traits(zend_class_entry *ce, HashTable *mi
 {
 	zend_class_entry *new_class_entry;
 	uint new_class_name_length = 0;
-	char *new_class_name;
+	char *new_class_name, *lcname;
 	zend_class_entry **pce = NULL;
 
 	if ((ce->ce_flags & ZEND_ACC_TRAIT) == ZEND_ACC_TRAIT) {
@@ -5433,6 +5433,15 @@ ZEND_API zend_class_entry *zend_mixin_traits(zend_class_entry *ce, HashTable *mi
 		new_class_entry->info.user.filename = zend_get_executed_filename(TSRMLS_C);
 		new_class_entry->info.user.line_start = zend_get_executed_lineno(TSRMLS_C);
 	}
+
+	lcname = zend_str_tolower_dup(new_class_name, new_class_name_length);
+	if (zend_hash_add(EG(class_table), lcname, new_class_name_length + 1, (void *)&new_class_entry, sizeof(zend_class_entry *), NULL) == FAILURE) {
+		efree(lcname);
+		destroy_zend_class(&new_class_entry);
+		zend_error(E_ERROR, "Cannot register mix-in class");
+		return NULL;
+	}
+	efree(lcname);
 
 	zend_do_inheritance(new_class_entry, ce TSRMLS_CC);
 	for (zend_hash_internal_pointer_reset(mixin_table);
