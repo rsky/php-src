@@ -730,14 +730,14 @@ instance_call:
 ;
 
 new_expr:
-		T_NEW mixin_class_name_reference { zend_do_extended_fcall_begin(TSRMLS_C); zend_do_begin_new_object(&$1, &$2 TSRMLS_CC); } ctor_arguments { zend_do_end_new_object(&$$, &$1, &$4 TSRMLS_CC); zend_do_extended_fcall_end(TSRMLS_C);}
+		T_NEW class_name_expr { zend_do_extended_fcall_begin(TSRMLS_C); zend_do_begin_new_object(&$1, &$2 TSRMLS_CC); } ctor_arguments { zend_do_end_new_object(&$$, &$1, &$4 TSRMLS_CC); zend_do_extended_fcall_end(TSRMLS_C);}
 ;
 
 expr_without_variable:
 		T_LIST '(' { zend_do_list_init(TSRMLS_C); } assignment_list ')' '=' expr { zend_do_list_end(&$$, &$7 TSRMLS_CC); }
 	|	variable '=' expr		{ zend_check_writable_variable(&$1); zend_do_assign(&$$, &$1, &$3 TSRMLS_CC); }
 	|	variable '=' '&' variable { zend_check_writable_variable(&$1); zend_do_end_variable_parse(&$4, BP_VAR_W, 1 TSRMLS_CC); zend_do_end_variable_parse(&$1, BP_VAR_W, 0 TSRMLS_CC); zend_do_assign_ref(&$$, &$1, &$4 TSRMLS_CC); }
-	|	variable '=' '&' T_NEW mixin_class_name_reference { zend_error(E_DEPRECATED, "Assigning the return value of new by reference is deprecated");  zend_check_writable_variable(&$1); zend_do_extended_fcall_begin(TSRMLS_C); zend_do_begin_new_object(&$4, &$5 TSRMLS_CC); } ctor_arguments { zend_do_end_new_object(&$3, &$4, &$7 TSRMLS_CC); zend_do_extended_fcall_end(TSRMLS_C); zend_do_end_variable_parse(&$1, BP_VAR_W, 0 TSRMLS_CC); $3.EA = ZEND_PARSED_NEW; zend_do_assign_ref(&$$, &$1, &$3 TSRMLS_CC); }
+	|	variable '=' '&' T_NEW class_name_expr { zend_error(E_DEPRECATED, "Assigning the return value of new by reference is deprecated");  zend_check_writable_variable(&$1); zend_do_extended_fcall_begin(TSRMLS_C); zend_do_begin_new_object(&$4, &$5 TSRMLS_CC); } ctor_arguments { zend_do_end_new_object(&$3, &$4, &$7 TSRMLS_CC); zend_do_extended_fcall_end(TSRMLS_C); zend_do_end_variable_parse(&$1, BP_VAR_W, 0 TSRMLS_CC); $3.EA = ZEND_PARSED_NEW; zend_do_assign_ref(&$$, &$1, &$3 TSRMLS_CC); }
 	|	T_CLONE expr { zend_do_clone(&$$, &$2 TSRMLS_CC); }
 	|	variable T_PLUS_EQUAL expr 	{ zend_check_writable_variable(&$1); zend_do_end_variable_parse(&$1, BP_VAR_RW, 0 TSRMLS_CC); zend_do_binary_assign_op(ZEND_ASSIGN_ADD, &$$, &$1, &$3 TSRMLS_CC); }
 	|	variable T_MINUS_EQUAL expr	{ zend_check_writable_variable(&$1); zend_do_end_variable_parse(&$1, BP_VAR_RW, 0 TSRMLS_CC); zend_do_binary_assign_op(ZEND_ASSIGN_SUB, &$$, &$1, &$3 TSRMLS_CC); }
@@ -880,14 +880,23 @@ fully_qualified_class_name:
 ;
 
 
-mixin_class_name_reference:
+class_name_expr:
 		class_name_reference { $$ = $1; }
-	|	class_name_reference T_USE { zend_do_begin_mixin(TSRMLS_C); } mixin_list { zend_do_end_mixin(&$$, &$1 TSRMLS_CC); }
+	|	class_name_reference T_USE { zend_do_begin_mixin(TSRMLS_C); } mixin_traits { zend_do_end_mixin(&$$, &$1 TSRMLS_CC); }
+;
+
+mixin_traits:
+		mixin_list_element
+	|	'(' mixin_list ')'
 ;
 
 mixin_list:
+		mixin_list_element
+	|	mixin_list ',' mixin_list_element
+;
+
+mixin_list_element:
 		class_name_reference { zend_do_add_mixin_trait(&$1 TSRMLS_CC); }
-	|	mixin_list ',' class_name_reference { zend_do_add_mixin_trait(&$3 TSRMLS_CC); }
 ;
 
 class_name_reference:
