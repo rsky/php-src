@@ -1439,6 +1439,10 @@ NEWLINE ("\r"|"\n"|"\r\n")
 	return T_LOGICAL_XOR;
 }
 
+<ST_IN_SCRIPTING>"NOT" {
+	return T_LOGICAL_NOT;
+}
+
 <ST_IN_SCRIPTING>"<<" {
 	return T_SL;
 }
