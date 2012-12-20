@@ -1088,6 +1088,21 @@ static inline void do_end_loop(int cont_addr, int has_loop_var TSRMLS_DC) /* {{{
 }
 /* }}} */
 
+void zend_do_until_cond(const znode *expr, znode *close_bracket_token TSRMLS_DC) /* {{{ */
+{
+	int while_cond_op_number = get_next_op_number(CG(active_op_array));
+	zend_op *opline = get_next_op(CG(active_op_array) TSRMLS_CC);
+
+	opline->opcode = ZEND_JMPNZ;
+	SET_NODE(opline->op1, expr);
+	close_bracket_token->u.op.opline_num = while_cond_op_number;
+	SET_UNUSED(opline->op2);
+
+	do_begin_loop(TSRMLS_C);
+	INC_BPC(CG(active_op_array));
+}
+/* }}} */
+
 void zend_do_while_cond(const znode *expr, znode *close_bracket_token TSRMLS_DC) /* {{{ */
 {
 	int while_cond_op_number = get_next_op_number(CG(active_op_array));
@@ -1217,6 +1232,19 @@ void zend_do_post_incdec(znode *result, const znode *op1, zend_uchar op TSRMLS_D
 	opline->result_type = IS_TMP_VAR;
 	opline->result.var = get_temporary_variable(CG(active_op_array));
 	GET_NODE(result, opline->result);
+}
+/* }}} */
+
+void zend_do_unless_cond(const znode *cond, znode *closing_bracket_token TSRMLS_DC) /* {{{ */
+{
+	int if_cond_op_number = get_next_op_number(CG(active_op_array));
+	zend_op *opline = get_next_op(CG(active_op_array) TSRMLS_CC);
+
+	opline->opcode = ZEND_JMPNZ;
+	SET_NODE(opline->op1, cond);
+	closing_bracket_token->u.op.opline_num = if_cond_op_number;
+	SET_UNUSED(opline->op2);
+	INC_BPC(CG(active_op_array));
 }
 /* }}} */
 
@@ -4907,11 +4935,15 @@ void zend_do_do_while_begin(TSRMLS_D) /* {{{ */
 }
 /* }}} */
 
-void zend_do_do_while_end(const znode *do_token, const znode *expr_open_bracket, const znode *expr TSRMLS_DC) /* {{{ */
+void zend_do_do_while_or_until_end(const znode *do_token, const znode *expr_open_bracket, const znode *expr TSRMLS_DC) /* {{{ */
 {
 	zend_op *opline = get_next_op(CG(active_op_array) TSRMLS_CC);
 
-	opline->opcode = ZEND_JMPNZ;
+	if (expr_open_bracket->EA == T_UNTIL) {
+		opline->opcode = ZEND_JMPZ;
+	} else {
+		opline->opcode = ZEND_JMPNZ;
+	}
 	SET_NODE(opline->op1, expr);
 	opline->op2.opline_num = do_token->u.op.opline_num;
 	SET_UNUSED(opline->op2);
