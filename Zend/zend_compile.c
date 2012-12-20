@@ -5457,10 +5457,10 @@ ZEND_API zend_class_entry *zend_mixin_traits(zend_class_entry *ce, HashTable *mi
 
 	new_class_name = zend_mixin_class_name(ce, mixin_table, &new_class_name_length TSRMLS_CC);
 	lcname = zend_str_tolower_dup(new_class_name, new_class_name_length);
-	if (zend_hash_find(EG(class_table), lcname, new_class_name_length + 1, (void **)&new_class_entry) == SUCCESS) {
+	if (zend_hash_find(EG(class_table), lcname, new_class_name_length + 1, (void **)&pce) == SUCCESS) {
 		efree(lcname);
 		efree(new_class_name);
-		return new_class_entry;
+		return *pce;
 	}
 
 	new_class_entry = (zend_class_entry *)emalloc(sizeof(zend_class_entry));
