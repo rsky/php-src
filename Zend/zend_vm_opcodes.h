@@ -164,3 +164,6 @@
 #define ZEND_GENERATOR_RETURN                161
 #define ZEND_FAST_CALL                       162
 #define ZEND_FAST_RET                        163
+#define ZEND_BEGIN_MIXIN                     164
+#define ZEND_ADD_MIXIN_TRAIT                 165
+#define ZEND_END_MIXIN                       166
