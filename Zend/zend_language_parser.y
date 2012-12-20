@@ -813,6 +813,21 @@ expr_without_variable:
 	|	T_STATIC function is_reference { zend_do_begin_lambda_function_declaration(&$$, &$2, $3.op_type, 1 TSRMLS_CC); }
 		'(' parameter_list ')' lexical_vars
 		'{' inner_statement_list '}' { zend_do_end_function_declaration(&$2 TSRMLS_CC); $$ = $4; }
+	|	blocks_expr { $$ = $1; }
+;
+
+blocks_expr:
+		'^' is_reference { $1.u.op.opline_num = CG(zend_lineno); zend_do_begin_lambda_function_declaration(&$$, &$1, $2.op_type, 0 TSRMLS_CC); }
+		blocks_parameters lexical_vars
+		'{' inner_statement_list '}' { zend_do_end_function_declaration(&$1 TSRMLS_CC); $$ = $3; }
+	|	T_STATIC '^' is_reference { $2.u.op.opline_num = CG(zend_lineno); zend_do_begin_lambda_function_declaration(&$$, &$2, $3.op_type, 1 TSRMLS_CC); }
+		blocks_parameters lexical_vars
+		'{' inner_statement_list '}' { zend_do_end_function_declaration(&$2 TSRMLS_CC); $$ = $4; }
+;
+
+blocks_parameters:
+		/* empty */
+	|	'(' parameter_list ')'
 ;
 
 yield_expr:
@@ -863,6 +878,8 @@ function_call:
 	|	variable_class_name T_PAAMAYIM_NEKUDOTAYIM variable_without_objects { zend_do_end_variable_parse(&$3, BP_VAR_R, 0 TSRMLS_CC); zend_do_begin_class_member_function_call(&$1, &$3 TSRMLS_CC); }
 		function_call_parameter_list { zend_do_end_function_call(NULL, &$$, &$5, 1, 1 TSRMLS_CC); zend_do_extended_fcall_end(TSRMLS_C);}
 	|	variable_without_objects { zend_do_end_variable_parse(&$1, BP_VAR_R, 0 TSRMLS_CC); zend_do_begin_dynamic_function_call(&$1, 0 TSRMLS_CC); }
+		function_call_parameter_list { zend_do_end_function_call(&$1, &$$, &$3, 0, 1 TSRMLS_CC); zend_do_extended_fcall_end(TSRMLS_C);}
+	|	blocks_expr { zend_do_begin_dynamic_function_call(&$1, 0 TSRMLS_CC); }
 		function_call_parameter_list { zend_do_end_function_call(&$1, &$$, &$3, 0, 1 TSRMLS_CC); zend_do_extended_fcall_end(TSRMLS_C);}
 ;
 
