@@ -2,7 +2,7 @@
    +----------------------------------------------------------------------+
    | Zend Engine                                                          |
    +----------------------------------------------------------------------+
-   | Copyright (c) 1998-2012 Zend Technologies Ltd. (http://www.zend.com) |
+   | Copyright (c) 1998-2013 Zend Technologies Ltd. (http://www.zend.com) |
    +----------------------------------------------------------------------+
    | This source file is subject to version 2.00 of the Zend license,     |
    | that is bundled with this package in the file LICENSE, and is        |
@@ -974,27 +974,15 @@ ZEND_VM_HANDLER(40, ZEND_ECHO, CONST|TMP|VAR|CV, ANY)
 {
 	USE_OPLINE
 	zend_free_op free_op1;
-	zval z_copy;
 	zval *z;
 
 	SAVE_OPLINE();
 	z = GET_OP1_ZVAL_PTR(BP_VAR_R);
 
-	if (OP1_TYPE != IS_CONST &&
-	    UNEXPECTED(Z_TYPE_P(z) == IS_OBJECT) &&
-	    Z_OBJ_HT_P(z)->get_method != NULL) {
-	    if (OP1_TYPE == IS_TMP_VAR) {
-	    	INIT_PZVAL(z);
-	    }
-		if (zend_std_cast_object_tostring(z, &z_copy, IS_STRING TSRMLS_CC) == SUCCESS) {
-			zend_print_variable(&z_copy);
-			zval_dtor(&z_copy);
-		} else {
-			zend_print_variable(z);
-		}
-	} else {
-		zend_print_variable(z);
+	if (OP1_TYPE == IS_TMP_VAR && Z_TYPE_P(z) == IS_OBJECT) {
+		INIT_PZVAL(z);
 	}
+	zend_print_variable(z);
 
 	FREE_OP1();
 	CHECK_EXCEPTION();
@@ -1843,7 +1831,7 @@ ZEND_VM_HANDLER(39, ZEND_ASSIGN_REF, VAR|CV, VAR|CV)
 
 ZEND_VM_HELPER(zend_leave_helper, ANY, ANY)
 {
-	zend_bool nested;
+	zend_bool nested = EX(nested);
 	zend_op_array *op_array = EX(op_array);
 
 	EG(current_execute_data) = EX(prev_execute_data);
@@ -1852,13 +1840,11 @@ ZEND_VM_HELPER(zend_leave_helper, ANY, ANY)
 		i_free_compiled_variables(execute_data);
 	}
 
+	zend_vm_stack_free((char*)execute_data - (ZEND_MM_ALIGNED_SIZE(sizeof(temp_variable)) * op_array->T) TSRMLS_CC);
+
 	if ((op_array->fn_flags & ZEND_ACC_CLOSURE) && op_array->prototype) {
 		zval_ptr_dtor((zval**)&op_array->prototype);
 	}
-
-	nested = EX(nested);
-
-	zend_vm_stack_free((char*)execute_data - (ZEND_MM_ALIGNED_SIZE(sizeof(temp_variable)) * op_array->T) TSRMLS_CC);
 
 	if (nested) {
 		execute_data = EG(current_execute_data);
@@ -2423,6 +2409,9 @@ ZEND_VM_HANDLER(109, ZEND_FETCH_CLASS, ANY, CONST|TMP|VAR|UNUSED|CV)
 		} else if (Z_TYPE_P(class_name) == IS_STRING) {
 			EX_T(opline->result.var).class_entry = zend_fetch_class(Z_STRVAL_P(class_name), Z_STRLEN_P(class_name), opline->extended_value TSRMLS_CC);
 		} else {
+			if (UNEXPECTED(EG(exception) != NULL)) {
+				HANDLE_EXCEPTION();
+			}
 			zend_error_noreturn(E_ERROR, "Class name must be a valid object or a string");
 		}
 
@@ -2447,6 +2436,9 @@ ZEND_VM_HANDLER(112, ZEND_INIT_METHOD_CALL, TMP|VAR|UNUSED|CV, CONST|TMP|VAR|CV)
 
 	if (OP2_TYPE != IS_CONST &&
 	    UNEXPECTED(Z_TYPE_P(function_name) != IS_STRING)) {
+		if (UNEXPECTED(EG(exception) != NULL)) {
+			HANDLE_EXCEPTION();
+		}
 		zend_error_noreturn(E_ERROR, "Method name must be a string");
 	}
 
@@ -2480,6 +2472,10 @@ ZEND_VM_HANDLER(112, ZEND_INIT_METHOD_CALL, TMP|VAR|UNUSED|CV, CONST|TMP|VAR|CV)
 			}
 		}
 	} else {
+		if (UNEXPECTED(EG(exception) != NULL)) {
+			FREE_OP2();
+			HANDLE_EXCEPTION();
+		}
 		zend_error_noreturn(E_ERROR, "Call to a member function %s() on a non-object", function_name_strval);
 	}
 
@@ -2558,6 +2554,9 @@ ZEND_VM_HANDLER(113, ZEND_INIT_STATIC_METHOD_CALL, CONST|VAR, CONST|TMP|VAR|UNUS
 			function_name = GET_OP2_ZVAL_PTR(BP_VAR_R);
 
 			if (UNEXPECTED(Z_TYPE_P(function_name) != IS_STRING)) {
+				if (UNEXPECTED(EG(exception) != NULL)) {
+					HANDLE_EXCEPTION();
+				}
 				zend_error_noreturn(E_ERROR, "Function name must be a string");
 			} else {
 				function_name_strval = Z_STRVAL_P(function_name);
@@ -2761,6 +2760,9 @@ ZEND_VM_HANDLER(59, ZEND_INIT_FCALL_BY_NAME, ANY, CONST|TMP|VAR|CV)
 			CHECK_EXCEPTION();
 			ZEND_VM_NEXT_OPCODE();
 		} else {
+			if (UNEXPECTED(EG(exception) != NULL)) {
+				HANDLE_EXCEPTION();
+			}
 			zend_error_noreturn(E_ERROR, "Function name must be a string");
 			ZEND_VM_NEXT_OPCODE(); /* Never reached */
 		}
@@ -2973,8 +2975,12 @@ ZEND_VM_HANDLER(108, ZEND_THROW, CONST|TMP|VAR|CV, ANY)
 	value = GET_OP1_ZVAL_PTR(BP_VAR_R);
 
 	if (OP1_TYPE == IS_CONST || UNEXPECTED(Z_TYPE_P(value) != IS_OBJECT)) {
+		if (UNEXPECTED(EG(exception) != NULL)) {
+			HANDLE_EXCEPTION();
+		}
 		zend_error_noreturn(E_ERROR, "Can only throw objects");
 	}
+
 	zend_exception_save(TSRMLS_C);
 	/* Not sure if a complete copy is what we want here */
 	ALLOC_ZVAL(exception);
@@ -3437,6 +3443,9 @@ ZEND_VM_HANDLER(110, ZEND_CLONE, CONST|TMP|VAR|UNUSED|CV, ANY)
 
 	if (OP1_TYPE == IS_CONST ||
 	    UNEXPECTED(Z_TYPE_P(obj) != IS_OBJECT)) {
+		if (UNEXPECTED(EG(exception) != NULL)) {
+			HANDLE_EXCEPTION();
+		}
 		zend_error_noreturn(E_ERROR, "__clone method called on non-object");
 	}
 
@@ -3569,6 +3578,9 @@ ZEND_VM_HANDLER(99, ZEND_FETCH_CONSTANT, VAR|CONST|UNUSED, CONST)
 			}
 			ZVAL_COPY_VALUE(&EX_T(opline->result.var).tmp_var, *value);
 			zval_copy_ctor(&EX_T(opline->result.var).tmp_var);
+		} else if (Z_STRLEN_P(opline->op2.zv) == sizeof("class")-1 && strcmp(Z_STRVAL_P(opline->op2.zv), "class") == 0) {
+			/* "class" is assigned as a case-sensitive keyword from zend_do_resolve_class_name */
+			ZVAL_STRINGL(&EX_T(opline->result.var).tmp_var, ce->name, ce->name_length, 1);
 		} else {
 			zend_error_noreturn(E_ERROR, "Undefined class constant '%s'", Z_STRVAL_P(opline->op2.zv));
 		}
@@ -4272,8 +4284,7 @@ ZEND_VM_HANDLER(78, ZEND_FE_FETCH, VAR, ANY)
 			          zend_check_property_access(zobj, str_key, str_key_len-1 TSRMLS_CC) != SUCCESS));
 			zend_hash_get_pointer(fe_ht, &EX_T(opline->op1.var).fe.fe_pos);
 			if (use_key && key_type != HASH_KEY_IS_LONG) {
-				zend_unmangle_property_name(str_key, str_key_len-1, &class_name, &prop_name);
-				str_key_len = strlen(prop_name);
+				zend_unmangle_property_name_ex(str_key, str_key_len-1, &class_name, &prop_name, &str_key_len);
 				str_key = estrndup(prop_name, str_key_len);
 				str_key_len++;
 			}
