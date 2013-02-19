@@ -2,7 +2,7 @@
    +----------------------------------------------------------------------+
    | Zend Engine                                                          |
    +----------------------------------------------------------------------+
-   | Copyright (c) 1998-2012 Zend Technologies Ltd. (http://www.zend.com) |
+   | Copyright (c) 1998-2013 Zend Technologies Ltd. (http://www.zend.com) |
    +----------------------------------------------------------------------+
    | This source file is subject to version 2.00 of the Zend license,     |
    | that is bundled with this package in the file LICENSE, and is        |
@@ -27,46 +27,23 @@
 ZEND_API zend_class_entry *zend_ce_generator;
 static zend_object_handlers zend_generator_handlers;
 
+static zend_object_value zend_generator_create(zend_class_entry *class_type TSRMLS_DC);
+
 ZEND_API void zend_generator_close(zend_generator *generator, zend_bool finished_execution TSRMLS_DC) /* {{{ */
 {
+	if (generator->value) {
+		zval_ptr_dtor(&generator->value);
+		generator->value = NULL;
+	}
+
+	if (generator->key) {
+		zval_ptr_dtor(&generator->key);
+		generator->key = NULL;
+	}
+
 	if (generator->execute_data) {
 		zend_execute_data *execute_data = generator->execute_data;
 		zend_op_array *op_array = execute_data->op_array;
-
-		if (!finished_execution) {
-			if (op_array->has_finally_block) {
-				/* -1 required because we want the last run opcode, not the
-  				 * next to-be-run one. */
-				zend_uint op_num = execute_data->opline - op_array->opcodes - 1;
-				zend_uint finally_op_num = 0;
-
-				/* Find next finally block */
-				int i;
-				for (i = 0; i < op_array->last_try_catch; i++) {
-					zend_try_catch_element *try_catch = &op_array->try_catch_array[i];
-
-					if (op_num < try_catch->try_op) {
-						break;
-					}
-
-					if (op_num < try_catch->finally_op) {
-						finally_op_num = try_catch->finally_op;
-					}
-				}
-
-				/* If a finally block was found we jump directly to it and
-				 * resume the generator. Furthermore we abort this close call
-				 * because the generator will already be closed somewhere in
-				 * the resume. */
-				if (finally_op_num) {
-					execute_data->opline = &op_array->opcodes[finally_op_num];
-					execute_data->fast_ret = NULL;
-					generator->flags |= ZEND_GENERATOR_FORCED_CLOSE;
-					zend_generator_resume(generator TSRMLS_CC);
-					return;
-				}
-			}
-		}
 
 		if (!execute_data->symbol_table) {
 			zend_free_compiled_variables(execute_data);
@@ -117,10 +94,16 @@ ZEND_API void zend_generator_close(zend_generator *generator, zend_bool finished
 
 		/* Clear any backed up stack arguments */
 		if (generator->stack != EG(argument_stack)) {
-			void **stack_frame = zend_vm_stack_frame_base(execute_data);
-			while (generator->stack->top != stack_frame) {
-				zval_ptr_dtor((zval**)stack_frame);
-				stack_frame++;
+			void **ptr = generator->stack->top - 1;
+			void **end = zend_vm_stack_frame_base(execute_data);
+
+			/* If the top stack element is the argument count, skip it */
+			if (execute_data->function_state.arguments) {
+				ptr--;
+			}
+
+			for (; ptr >= end; --ptr) {
+				zval_ptr_dtor((zval**) ptr);
 			}
 		}
 
@@ -162,15 +145,44 @@ ZEND_API void zend_generator_close(zend_generator *generator, zend_bool finished
 		}
 		generator->execute_data = NULL;
 	}
+}
+/* }}} */
 
-	if (generator->value) {
-		zval_ptr_dtor(&generator->value);
-		generator->value = NULL;
+static void zend_generator_dtor_storage(zend_generator *generator, zend_object_handle handle TSRMLS_DC) /* {{{ */
+{
+	zend_execute_data *ex = generator->execute_data;
+	zend_uint op_num, finally_op_num;
+	int i;
+
+	if (!ex || !ex->op_array->has_finally_block) {
+		return;
 	}
 
-	if (generator->key) {
-		zval_ptr_dtor(&generator->key);
-		generator->key = NULL;
+	/* -1 required because we want the last run opcode, not the
+	 * next to-be-run one. */
+	op_num = ex->opline - ex->op_array->opcodes - 1;
+
+	/* Find next finally block */
+	finally_op_num = 0;
+	for (i = 0; i < ex->op_array->last_try_catch; i++) {
+		zend_try_catch_element *try_catch = &ex->op_array->try_catch_array[i];
+
+		if (op_num < try_catch->try_op) {
+			break;
+		}
+
+		if (op_num < try_catch->finally_op) {
+			finally_op_num = try_catch->finally_op;
+		}
+	}
+
+	/* If a finally block was found we jump directly to it and
+	 * resume the generator. */
+	if (finally_op_num) {
+		ex->opline = &ex->op_array->opcodes[finally_op_num];
+		ex->fast_ret = NULL;
+		generator->flags |= ZEND_GENERATOR_FORCED_CLOSE;
+		zend_generator_resume(generator TSRMLS_CC);
 	}
 }
 /* }}} */
@@ -184,10 +196,19 @@ static void zend_generator_free_storage(zend_generator *generator TSRMLS_DC) /* 
 }
 /* }}} */
 
-static void zend_generator_clone_storage(zend_generator *orig, zend_generator **clone_ptr TSRMLS_DC) /* {{{ */
+static zend_object_value zend_generator_clone(zval *object TSRMLS_DC) /* {{{ */
 {
-	zend_generator *clone = emalloc(sizeof(zend_generator));
-	memcpy(clone, orig, sizeof(zend_generator));
+	zend_generator *orig = zend_object_store_get_object(object TSRMLS_CC);
+	zend_object_value clone_val = zend_generator_create(Z_OBJCE_P(object) TSRMLS_CC);
+	zend_generator *clone = zend_object_store_get_object_by_handle(clone_val.handle TSRMLS_CC);
+
+	zend_objects_clone_members(
+		&clone->std, clone_val, &orig->std, Z_OBJ_HANDLE_P(object) TSRMLS_CC
+	);
+
+	clone->execute_data = orig->execute_data;
+	clone->largest_used_integer_key = orig->largest_used_integer_key;
+	clone->flags = orig->flags;
 
 	if (orig->execute_data) {
 		/* Create a few shorter aliases to the old execution data */
@@ -223,6 +244,7 @@ static void zend_generator_clone_storage(zend_generator *orig, zend_generator **
 		/* copy */
 		clone->execute_data->opline = execute_data->opline;
 		clone->execute_data->function_state = execute_data->function_state;
+		clone->execute_data->object = execute_data->object;
 		clone->execute_data->current_scope = execute_data->current_scope;
 		clone->execute_data->current_called_scope = execute_data->current_called_scope;
 		clone->execute_data->fast_ret = execute_data->fast_ret;
@@ -326,23 +348,20 @@ static void zend_generator_clone_storage(zend_generator *orig, zend_generator **
 			clone->execute_data->current_this = execute_data->current_this;
 			Z_ADDREF_P(execute_data->current_this);
 		}
-
-		if (execute_data->object) {
-			clone->execute_data->object = execute_data->object;
-			Z_ADDREF_P(execute_data->object);
-		}
 	}
 
 	/* The value and key are known not to be references, so simply add refs */
 	if (orig->value) {
+		clone->value = orig->value;
 		Z_ADDREF_P(orig->value);
 	}
 
 	if (orig->key) {
+		clone->key = orig->key;
 		Z_ADDREF_P(orig->key);
 	}
 
-	*clone_ptr = clone;
+	return clone_val;
 }
 /* }}} */
 
@@ -359,10 +378,10 @@ static zend_object_value zend_generator_create(zend_class_entry *class_type TSRM
 
 	zend_object_std_init(&generator->std, class_type TSRMLS_CC);
 
-	object.handle = zend_objects_store_put(generator, NULL,
+	object.handle = zend_objects_store_put(generator,
+		(zend_objects_store_dtor_t)          zend_generator_dtor_storage,
 		(zend_objects_free_object_storage_t) zend_generator_free_storage,
-		(zend_objects_store_clone_t)         zend_generator_clone_storage
-		TSRMLS_CC
+		NULL TSRMLS_CC
 	);
 	object.handlers = &zend_generator_handlers;
 
@@ -435,10 +454,6 @@ static zend_function *zend_generator_get_constructor(zval *object TSRMLS_DC) /* 
 
 ZEND_API void zend_generator_resume(zend_generator *generator TSRMLS_DC) /* {{{ */
 {
-	if (EG(exception)) {
-		return;
-	}
-
 	/* The generator is already closed, thus can't resume */
 	if (!generator->execute_data) {
 		return;
@@ -621,7 +636,7 @@ ZEND_METHOD(Generator, next)
 }
 /* }}} */
 
-/* {{{ proto mixed Generator::send()
+/* {{{ proto mixed Generator::send(mixed $value)
  * Sends a value to the generator */
 ZEND_METHOD(Generator, send)
 {
@@ -648,6 +663,44 @@ ZEND_METHOD(Generator, send)
 
 	if (generator->value) {
 		RETURN_ZVAL(generator->value, 1, 0);
+	}
+}
+/* }}} */
+
+/* {{{ proto mixed Generator::throw(Exception $exception)
+ * Throws an exception into the generator */
+ZEND_METHOD(Generator, throw)
+{
+	zval *exception, *exception_copy;
+	zend_generator *generator;
+
+	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "z", &exception) == FAILURE) {
+		return;
+	}
+
+	ALLOC_ZVAL(exception_copy);
+	MAKE_COPY_ZVAL(&exception, exception_copy);
+
+	generator = (zend_generator *) zend_object_store_get_object(getThis() TSRMLS_CC);
+
+	if (generator->execute_data) {
+		/* Throw the exception in the context of the generator */
+		zend_execute_data *current_execute_data = EG(current_execute_data);
+		EG(current_execute_data) = generator->execute_data;
+
+		zend_throw_exception_object(exception_copy TSRMLS_CC);
+
+		EG(current_execute_data) = current_execute_data;
+
+		zend_generator_resume(generator TSRMLS_CC);
+
+		if (generator->value) {
+			RETURN_ZVAL(generator->value, 1, 0);
+		}
+	} else {
+		/* If the generator is already closed throw the exception in the
+		 * current context */
+		zend_throw_exception_object(exception_copy TSRMLS_CC);
 	}
 }
 /* }}} */
@@ -794,6 +847,10 @@ ZEND_BEGIN_ARG_INFO_EX(arginfo_generator_send, 0, 0, 1)
 	ZEND_ARG_INFO(0, value)
 ZEND_END_ARG_INFO()
 
+ZEND_BEGIN_ARG_INFO_EX(arginfo_generator_throw, 0, 0, 1)
+	ZEND_ARG_INFO(0, exception)
+ZEND_END_ARG_INFO()
+
 static const zend_function_entry generator_functions[] = {
 	ZEND_ME(Generator, rewind,   arginfo_generator_void, ZEND_ACC_PUBLIC)
 	ZEND_ME(Generator, valid,    arginfo_generator_void, ZEND_ACC_PUBLIC)
@@ -801,6 +858,7 @@ static const zend_function_entry generator_functions[] = {
 	ZEND_ME(Generator, key,      arginfo_generator_void, ZEND_ACC_PUBLIC)
 	ZEND_ME(Generator, next,     arginfo_generator_void, ZEND_ACC_PUBLIC)
 	ZEND_ME(Generator, send,     arginfo_generator_send, ZEND_ACC_PUBLIC)
+	ZEND_ME(Generator, throw,    arginfo_generator_throw, ZEND_ACC_PUBLIC)
 	ZEND_ME(Generator, __wakeup, arginfo_generator_void, ZEND_ACC_PUBLIC)
 	ZEND_FE_END
 };
@@ -823,7 +881,7 @@ void zend_register_generator_ce(TSRMLS_D) /* {{{ */
 
 	memcpy(&zend_generator_handlers, zend_get_std_object_handlers(), sizeof(zend_object_handlers));
 	zend_generator_handlers.get_constructor = zend_generator_get_constructor;
-	zend_generator_handlers.clone_obj = zend_objects_store_clone_obj;
+	zend_generator_handlers.clone_obj = zend_generator_clone;
 }
 /* }}} */
 
