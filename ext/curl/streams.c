@@ -2,7 +2,7 @@
    +----------------------------------------------------------------------+
    | PHP Version 5                                                        |
    +----------------------------------------------------------------------+
-   | Copyright (c) 1997-2012 The PHP Group                                |
+   | Copyright (c) 1997-2013 The PHP Group                                |
    +----------------------------------------------------------------------+
    | This source file is subject to version 3.01 of the PHP license,      |
    | that is bundled with this package in the file LICENSE, and is        |
@@ -331,7 +331,7 @@ php_stream *php_curl_stream_opener(php_stream_wrapper *wrapper, char *filename, 
 		}
 
 		if (SUCCESS == php_stream_context_get_option(context, "http", "curl_verify_ssl_host", &ctx_opt) && Z_TYPE_PP(ctx_opt) == IS_BOOL && Z_LVAL_PP(ctx_opt) == 1) {
-			curl_easy_setopt(curlstream->curl, CURLOPT_SSL_VERIFYHOST, 1);
+			curl_easy_setopt(curlstream->curl, CURLOPT_SSL_VERIFYHOST, 2);
 		} else {
 			curl_easy_setopt(curlstream->curl, CURLOPT_SSL_VERIFYHOST, 0);
 		}
@@ -420,7 +420,7 @@ php_stream *php_curl_stream_opener(php_stream_wrapper *wrapper, char *filename, 
 		}
 	} else if (context && !strncasecmp(filename, "ftps", sizeof("ftps")-1)) {
 		if (SUCCESS == php_stream_context_get_option(context, "ftp", "curl_verify_ssl_host", &ctx_opt) && Z_TYPE_PP(ctx_opt) == IS_BOOL && Z_LVAL_PP(ctx_opt) == 1) {
-			curl_easy_setopt(curlstream->curl, CURLOPT_SSL_VERIFYHOST, 1);
+			curl_easy_setopt(curlstream->curl, CURLOPT_SSL_VERIFYHOST, 2);
 		} else {
 			curl_easy_setopt(curlstream->curl, CURLOPT_SSL_VERIFYHOST, 0);
 		}
