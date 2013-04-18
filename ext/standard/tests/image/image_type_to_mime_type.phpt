@@ -25,7 +25,7 @@ image_type_to_mime_type()
 	var_dump($result);
 ?>
 --EXPECT--
-array(12) {
+array(13) {
   ["test1bpix.bmp"]=>
   string(14) "image/x-ms-bmp"
   ["test1pix.bmp"]=>
@@ -50,4 +50,6 @@ array(12) {
   string(29) "application/x-shockwave-flash"
   ["test4pix.tif"]=>
   string(10) "image/tiff"
+  ["test4pix.webp"]=>
+  string(10) "image/webp"
 }

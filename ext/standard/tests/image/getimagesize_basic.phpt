@@ -33,7 +33,10 @@ $imagetype_filenames = array(
       "JP2 image file" => "test1pix.jp2",
 
       //IFF file
-      "IFF image file" => "test4pix.iff"
+      "IFF image file" => "test4pix.iff",
+
+      //WebP file
+      "WebP image file" => "200x100.webp",
 );
 
 echo "*** Testing getimagesize() : basic functionality ***\n";
@@ -215,5 +218,27 @@ array(6) {
   string(9) "image/iff"
 }
 array(0) {
+}
+
+-- WebP image file (200x100.webp) --
+array(7) {
+  [0]=>
+  int(200)
+  [1]=>
+  int(100)
+  [2]=>
+  int(18)
+  [3]=>
+  string(24) "width="200" height="100""
+  ["bits"]=>
+  int(8)
+  ["channels"]=>
+  int(3)
+  ["mime"]=>
+  string(10) "image/webp"
+}
+array(1) {
+  ["WebP"]=>
+  string(5) "lossy"
 }
 ===DONE===
