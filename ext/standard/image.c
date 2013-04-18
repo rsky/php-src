@@ -52,6 +52,9 @@ PHPAPI const char php_sig_jp2[12] = {(char)0x00, (char)0x00, (char)0x00, (char)0
                                      (char)0x0d, (char)0x0a, (char)0x87, (char)0x0a};
 PHPAPI const char php_sig_iff[4] = {'F','O','R','M'};
 PHPAPI const char php_sig_ico[4] = {(char)0x00, (char)0x00, (char)0x01, (char)0x00};
+PHPAPI const char php_sig_riff[4] = {'R', 'I', 'F', 'F'};
+PHPAPI const char php_sig_webp[4] = {'W', 'E', 'B', 'P'};
+PHPAPI const char php_sig_vp8[3] = {'V', 'P', '8'};
 
 /* REMEMBER TO ADD MIME-TYPE TO FUNCTION php_image_type_to_mime_type */
 /* PCX must check first 64bytes and byte 0=0x0a and byte2 < 0x06 */
@@ -89,6 +92,7 @@ PHP_MINIT_FUNCTION(imagetypes)
 	REGISTER_LONG_CONSTANT("IMAGETYPE_JPEG2000",IMAGE_FILETYPE_JPC,     CONST_CS | CONST_PERSISTENT); /* keep alias */
 	REGISTER_LONG_CONSTANT("IMAGETYPE_XBM",     IMAGE_FILETYPE_XBM,     CONST_CS | CONST_PERSISTENT);
 	REGISTER_LONG_CONSTANT("IMAGETYPE_ICO",     IMAGE_FILETYPE_ICO,     CONST_CS | CONST_PERSISTENT);
+	REGISTER_LONG_CONSTANT("IMAGETYPE_WEBP",    IMAGE_FILETYPE_WEBP,    CONST_CS | CONST_PERSISTENT);
 	REGISTER_LONG_CONSTANT("IMAGETYPE_UNKNOWN", IMAGE_FILETYPE_UNKNOWN, CONST_CS | CONST_PERSISTENT);
 	REGISTER_LONG_CONSTANT("IMAGETYPE_COUNT",   IMAGE_FILETYPE_COUNT,   CONST_CS | CONST_PERSISTENT);
 	return SUCCESS;
@@ -1111,6 +1115,220 @@ static struct gfxinfo *php_handle_ico(php_stream * stream TSRMLS_DC)
 }
 /* }}} */
 
+/* {{{ php_read4le
+ */
+static unsigned int php_read4le(php_stream * stream TSRMLS_DC)
+{
+	unsigned char a[4];
+
+	if (php_stream_read(stream, a, 4) != 4) {
+		return 0;
+	}
+
+	return (((unsigned int)a[3]) << 24)
+	     | (((unsigned int)a[2]) << 16)
+	     | (((unsigned int)a[1]) <<  8)
+	     | (((unsigned int)a[0]));
+}
+/* }}} */
+
+/* {{{ php_add_webp_chunk_data
+ */
+static int php_add_webp_chunk_data(php_stream * stream, zval *info, const char *name, unsigned int size TSRMLS_DC)
+{
+	unsigned char *data = emalloc(size);
+	if (!data) {
+		return 0;
+	}
+
+	if (php_stream_read(stream, data, size) != size) {
+		efree(data);
+		return 0;
+	}
+
+	add_assoc_stringl(info, name, data, size, 0);
+
+	return 1;
+}
+/* }}} */
+
+/* {{{ php_read_webp_chunk
+ */
+static int php_read_webp_chunk(php_stream * stream, int flags, zval *info TSRMLS_DC)
+{
+	unsigned char type[4];
+	unsigned int size;
+
+	if (php_stream_read(stream, type, 4) != 4) {
+		return 0;
+	}
+
+	size = php_read4le(stream TSRMLS_CC);
+	if (!size) {
+		return 0;
+	}
+
+	if ((flags & 0x20) == 0x20 && !memcmp(type, "ICCP", 4)) {
+		return php_add_webp_chunk_data(stream, info, "ICCP", size TSRMLS_CC);
+	} else if ((flags & 0x8) == 0x8 && !memcmp(type, "EXIF", 4)) {
+		return php_add_webp_chunk_data(stream, info, "EXIF", size TSRMLS_CC);
+	} else if ((flags & 0x4) == 0x4 && !memcmp(type, "XMP ", 4)) {
+		return php_add_webp_chunk_data(stream, info, "XMP", size TSRMLS_CC);
+	} else {
+		if (php_stream_seek(stream, size, SEEK_CUR)) {
+			return 0;
+		}
+	}
+
+	return 1;
+}
+/* }}} */
+
+/* {{{ php_handle_vp8
+ */
+static struct gfxinfo *php_handle_vp8(php_stream * stream, zval *info TSRMLS_DC)
+{
+	struct gfxinfo *result = NULL;
+	unsigned int width, height;
+	unsigned char dim[10];
+
+	if (!php_read4le(stream TSRMLS_CC)) {
+		return NULL;
+	}
+	if (php_stream_read(stream, dim, 10) != 10) {
+		return NULL;
+	}
+	if (dim[3] != 0x9d || dim[4] != 0x01 || dim[5] != 0x2a) {
+		return NULL;
+	}
+
+	width  = ((((unsigned int)dim[7]) << 8) | ((unsigned int)dim[6])) & 0x3fffU;
+	height = ((((unsigned int)dim[9]) << 8) | ((unsigned int)dim[8])) & 0x3fffU;
+
+	result = (struct gfxinfo *) ecalloc(1, sizeof(struct gfxinfo));
+	result->width = width;
+	result->height = height;
+	result->bits = 8;
+	result->channels = 3;
+
+	if (info) {
+		add_assoc_string(info, "WebP", "lossy", 1);
+	}
+
+	return result;
+}
+/* }}} */
+
+/* {{{ php_handle_vp8l
+ */
+static struct gfxinfo *php_handle_vp8l(php_stream * stream, zval *info TSRMLS_DC)
+{
+	struct gfxinfo *result = NULL;
+	unsigned int width, height;
+	unsigned char dim[4];
+
+	if (!php_read4le(stream TSRMLS_CC)) {
+		return NULL;
+	}
+	if (php_stream_getc(stream) != 0x2f) {
+		return NULL;
+	}
+	if (php_stream_read(stream, dim, 4) != 4) {
+		return NULL;
+	}
+
+	width = ((unsigned int)dim[0])
+		| ((((unsigned int)dim[1]) & 0x3f) << 8);
+	height = ((((unsigned int)dim[1]) & 0xc0) >> 6)
+		| (((unsigned int)dim[2]) << 2)
+		| ((((unsigned int)dim[3]) & 0x0f) >> 10);
+
+	result = (struct gfxinfo *) ecalloc(1, sizeof(struct gfxinfo));
+	result->width = width + 1;
+	result->height = height + 1;
+	result->bits = 8;
+	result->channels = (dim[3] & 0x10) ? 4 : 3;
+
+	if (info) {
+		add_assoc_string(info, "WebP", "lossless", 1);
+	}
+
+	return result;
+}
+/* }}} */
+
+/* {{{ php_handle_vp8x
+ */
+static struct gfxinfo *php_handle_vp8x(php_stream * stream, zval *info TSRMLS_DC)
+{
+	struct gfxinfo *result = NULL;
+	int flags;
+	unsigned int width, height;
+	unsigned char dim[10];
+
+	if (!php_read4le(stream TSRMLS_CC)) {
+		return NULL;
+	}
+	if (php_stream_read(stream, dim, 10) != 10) {
+		return NULL;
+	}
+
+	flags = (int)dim[0];
+	if ((flags & 0xc0) != 0) {
+		return NULL;
+	}
+
+	width = ((unsigned int)dim[4])
+		| (((unsigned int)dim[5]) << 8)
+		| (((unsigned int)dim[6]) << 16);
+	height = ((unsigned int)dim[7])
+		| (((unsigned int)dim[8]) << 8)
+		| (((unsigned int)dim[9]) << 16);
+
+	result = (struct gfxinfo *) ecalloc(1, sizeof(struct gfxinfo));
+	result->width = width + 1;
+	result->height = height + 1;
+	result->bits = 8;
+	result->channels = (flags & 0x10) ? 4 : 3;
+
+	if (info) {
+		add_assoc_string(info, "WebP", "extended", 1);
+		while (!php_stream_eof(stream)) {
+			if (!php_read_webp_chunk(stream, flags, info TSRMLS_CC)) {
+				break;
+			}
+		}
+	}
+
+	return result;
+}
+/* }}} */
+
+/* {{{ php_handle_webp
+ */
+static struct gfxinfo *php_handle_webp(php_stream * stream, zval *info TSRMLS_DC)
+{
+	unsigned char chunk_type[4];
+
+	if (php_stream_read(stream, chunk_type, 4) != 4) {
+		return NULL;
+	}
+
+	if (!memcmp(chunk_type, php_sig_vp8, 3)) {
+		switch (chunk_type[3]) {
+			case ' ':
+				return php_handle_vp8(stream, info TSRMLS_CC);
+			case 'L':
+				return php_handle_vp8l(stream, info TSRMLS_CC);
+			case 'X':
+				return php_handle_vp8x(stream, info TSRMLS_CC);
+		}
+	}
+
+	return NULL;
+}
+/* }}} */
+
 /* {{{ php_image_type_to_mime_type
  * Convert internal image_type to mime type */
 PHPAPI char * php_image_type_to_mime_type(int image_type)
@@ -1144,6 +1362,8 @@ PHPAPI char * php_image_type_to_mime_type(int image_type)
 			return "image/xbm";
 		case IMAGE_FILETYPE_ICO:
 			return "image/vnd.microsoft.icon";
+		case IMAGE_FILETYPE_WEBP:
+			return "image/webp";
 		default:
 		case IMAGE_FILETYPE_UNKNOWN:
 			return "application/octet-stream"; /* suppose binary format */
@@ -1208,6 +1428,8 @@ PHP_FUNCTION(image_type_to_extension)
 			RETURN_STRING(".xbm" + !inc_dot, 1);
 		case IMAGE_FILETYPE_ICO:
 			RETURN_STRING(".ico" + !inc_dot, 1);
+		case IMAGE_FILETYPE_WEBP:
+			RETURN_STRING(".webp" + !inc_dot, 1);
 	}
 
 	RETURN_FALSE;
@@ -1276,6 +1498,8 @@ PHPAPI int php_getimagetype(php_stream * stream, char *filetype TSRMLS_DC)
 /* BYTES READ: 12 */
    	if (!memcmp(filetype, php_sig_jp2, 12)) {
 		return IMAGE_FILETYPE_JP2;
+	} else if (!memcmp(filetype, php_sig_riff, 4) && !memcmp(filetype+8, php_sig_webp, 4)) {
+		return IMAGE_FILETYPE_WEBP;
 	}
 
 /* AFTER ALL ABOVE FAILED */
@@ -1353,6 +1577,13 @@ static void php_getimagesize_from_stream(php_stream *stream, zval **info, INTERN
 			break;
 		case IMAGE_FILETYPE_ICO:
 			result = php_handle_ico(stream TSRMLS_CC);
+			break;
+		case IMAGE_FILETYPE_WEBP:
+			if (info) {
+				result = php_handle_webp(stream, *info TSRMLS_CC);
+			} else {
+				result = php_handle_webp(stream, NULL TSRMLS_CC);
+			}
 			break;
 		default:
 		case IMAGE_FILETYPE_UNKNOWN:
