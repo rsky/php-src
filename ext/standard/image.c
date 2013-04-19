@@ -1136,16 +1136,18 @@ static unsigned int php_read4le(php_stream * stream TSRMLS_DC)
  */
 static int php_add_webp_chunk_data(php_stream * stream, zval *info, const char *name, unsigned int size TSRMLS_DC)
 {
-	unsigned char *data = emalloc(size);
+	unsigned int count = size + (size % 2);
+	unsigned char *data = emalloc(size + 1);
 	if (!data) {
 		return 0;
 	}
 
-	if (php_stream_read(stream, data, size) != size) {
+	if (php_stream_read(stream, data, count) != count) {
 		efree(data);
 		return 0;
 	}
 
+	data[size] = '\0';
 	add_assoc_stringl(info, name, data, size, 0);
 
 	return 1;
@@ -1175,7 +1177,7 @@ static int php_read_webp_chunk(php_stream * stream, int flags, zval *info TSRMLS
 	} else if ((flags & 0x4) == 0x4 && !memcmp(type, "XMP ", 4)) {
 		return php_add_webp_chunk_data(stream, info, "XMP", size TSRMLS_CC);
 	} else {
-		if (php_stream_seek(stream, size, SEEK_CUR)) {
+		if (php_stream_seek(stream, size + (size % 2), SEEK_CUR)) {
 			return 0;
 		}
 	}
