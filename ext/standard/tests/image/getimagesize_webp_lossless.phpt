@@ -8,7 +8,7 @@ if (!defined("IMAGETYPE_WEBP")) {
 ?>
 --FILE--
 <?php
-var_dump(getimagesize(__DIR__ . "/testLossless.webp", $info));
+var_dump(getimagesize(__DIR__ . "/test_lossless.webp", $info));
 var_dump($info);
 ?>
 --EXPECT--
