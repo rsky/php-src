@@ -9,9 +9,9 @@ dnl
 PHP_ARG_WITH(gd, for GD support,
 [  --with-gd[=DIR]         Include GD support.  DIR is the GD library base
                           install directory [BUNDLED]])
-if test -z "$PHP_VPX_DIR"; then
-  PHP_ARG_WITH(vpx-dir, for the location of libvpx,
-  [  --with-vpx-dir[=DIR]     GD: Set the path to libvpx install prefix], no, no)
+if test -z "$PHP_WEBP_DIR"; then
+  PHP_ARG_WITH(webp-dir, for the location of libwebp,
+  [  --with-webp-dir[=DIR]     GD: Set the path to libwebp install prefix], no, no)
 fi
 
 if test -z "$PHP_JPEG_DIR"; then
@@ -72,29 +72,28 @@ AC_DEFUN([PHP_GD_ZLIB],[
 	fi
 ])
 
-AC_DEFUN([PHP_GD_VPX],[
-  if test "$PHP_VPX_DIR" != "no"; then
+AC_DEFUN([PHP_GD_WEBP],[
+  if test "$PHP_WEBP_DIR" != "no"; then
 
-    for i in $PHP_VPX_DIR /usr/local /usr; do
-      test -f $i/include/vpx_codec.h || test -f $i/include/vpx/vpx_codec.h && GD_VPX_DIR=$i && break
+    for i in $PHP_WEBP_DIR /usr/local /usr; do
+      test -f $i/include/webp/encode.h && GD_WEBP_DIR=$i && break
     done
 
-    if test -z "$GD_VPX_DIR"; then
-      AC_MSG_ERROR([vpx_codec.h not found.])
+    if test -z "$GD_WEBP_DIR"; then
+      AC_MSG_ERROR([webp/encode.h not found.])
     fi
 
-    PHP_CHECK_LIBRARY(vpx,vpx_codec_destroy,
+    PHP_CHECK_LIBRARY(webp,WebPGetEncoderVersion,
     [
-      PHP_ADD_INCLUDE($GD_VPX_DIR/include)
-      PHP_ADD_LIBRARY(pthread)
-      PHP_ADD_LIBRARY_WITH_PATH(vpx, $GD_VPX_DIR/$PHP_LIBDIR, GD_SHARED_LIBADD)
+      PHP_ADD_INCLUDE($GD_WEBP_DIR/include)
+      PHP_ADD_LIBRARY_WITH_PATH(webp, $GD_WEBP_DIR/$PHP_LIBDIR, GD_SHARED_LIBADD)
     ],[
-      AC_MSG_ERROR([Problem with libvpx.(a|so). Please check config.log for more information.])
+      AC_MSG_ERROR([Problem with libwebp.(a|so). Please check config.log for more information.])
     ],[
-      -L$GD_VPX_DIR/$PHP_LIBDIR
+      -L$GD_WEBP_DIR/$PHP_LIBDIR
     ])
   else
-    AC_MSG_RESULT([If configure fails try --with-vpx-dir=<DIR>])
+    AC_MSG_RESULT([If configure fails try --with-webp-dir=<DIR>])
   fi
 ])
 
@@ -273,7 +272,7 @@ dnl PNG is required by GD library
 dnl Various checks for GD features
   PHP_GD_ZLIB
   PHP_GD_TTSTR
-  PHP_GD_VPX
+  PHP_GD_WEBP
   PHP_GD_JPEG
   PHP_GD_PNG
   PHP_GD_XPM
@@ -307,9 +306,9 @@ dnl Make sure the libgd/ is first in the include path
 dnl Depending which libraries were included to PHP configure,
 dnl enable the support in bundled GD library
 
-  if test -n "$GD_VPX_DIR"; then
+  if test -n "$GD_WEBP_DIR"; then
     AC_DEFINE(HAVE_GD_WEBP, 1, [ ])
-    GDLIB_CFLAGS="$GDLIB_CFLAGS -DHAVE_LIBVPX"
+    GDLIB_CFLAGS="$GDLIB_CFLAGS -DHAVE_LIBWEBP"
   fi
 
   if test -n "$GD_JPEG_DIR"; then
@@ -342,7 +341,7 @@ else
 dnl Various checks for GD features
   PHP_GD_ZLIB
   PHP_GD_TTSTR
-  PHP_GD_VPX
+  PHP_GD_WEBP
   PHP_GD_JPEG
   PHP_GD_PNG
   PHP_GD_XPM

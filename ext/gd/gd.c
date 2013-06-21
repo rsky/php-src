@@ -59,6 +59,10 @@
 
 # include "gd_compat.h"
 
+#ifdef HAVE_GD_WEBP
+extern int WebPGetEncoderVersion(void);
+extern int WebPGetDecoderVersion(void);
+#endif
 
 static int le_gd, le_gd_font;
 #if HAVE_LIBT1
@@ -370,6 +374,7 @@ ZEND_END_ARG_INFO()
 ZEND_BEGIN_ARG_INFO_EX(arginfo_imagewebp, 0, 0, 1)
 	ZEND_ARG_INFO(0, im)
 	ZEND_ARG_INFO(0, filename)
+	ZEND_ARG_INFO(0, quality)
 ZEND_END_ARG_INFO()
 #endif
 
@@ -1321,6 +1326,25 @@ PHP_MINFO_FUNCTION(gd)
 #ifdef HAVE_GD_PNG
 	php_info_print_table_row(2, "PNG Support", "enabled");
 	php_info_print_table_row(2, "libPNG Version", gdPngGetVersionString());
+#endif
+#ifdef HAVE_GD_WEBP
+	php_info_print_table_row(2, "WebP Support", "enabled");
+	{
+		char tmp[16];
+		int version;
+		version = WebPGetEncoderVersion();
+		snprintf(tmp, sizeof(tmp), "%d.%d.%d",
+			(version & 0xff0000) >> 16,
+			(version & 0xff00) >> 8,
+			(version & 0xff));
+		php_info_print_table_row(2, "WebP Encoder Version", tmp);
+		version = WebPGetDecoderVersion();
+		snprintf(tmp, sizeof(tmp), "%d.%d.%d",
+			(version & 0xff0000) >> 16,
+			(version & 0xff00) >> 8,
+			(version & 0xff));
+		php_info_print_table_row(2, "WebP Decoder Version", tmp);
+	}
 #endif
 	php_info_print_table_row(2, "WBMP Support", "enabled");
 #if defined(HAVE_GD_XPM)
@@ -2502,7 +2526,7 @@ PHP_FUNCTION(imagecreatefromwebp)
 	_php_image_create_from(INTERNAL_FUNCTION_PARAM_PASSTHRU, PHP_GDIMG_TYPE_WEBP, "WEBP", gdImageCreateFromWebpPtr, gdImageCreateFromWebpPtr);
 }
 /* }}} */
-#endif /* HAVE_GD_VPX */
+#endif /* HAVE_GD_WEBP */
 
 /* {{{ proto resource imagecreatefromxbm(string filename)
    Create a new image from XBM file or URL */
