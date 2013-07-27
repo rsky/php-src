@@ -2,7 +2,7 @@
    +----------------------------------------------------------------------+
    | Zend Engine                                                          |
    +----------------------------------------------------------------------+
-   | Copyright (c) 1998-2012 Zend Technologies Ltd. (http://www.zend.com) |
+   | Copyright (c) 1998-2013 Zend Technologies Ltd. (http://www.zend.com) |
    +----------------------------------------------------------------------+
    | This source file is subject to version 2.00 of the Zend license,     |
    | that is bundled with this package in the file LICENSE, and is        |
@@ -183,8 +183,7 @@ static zend_always_inline zval *_get_zval_ptr_var(zend_uint var, const zend_exec
 {
 	zval *ptr = EX_T(var).var.ptr;
 
-	PZVAL_UNLOCK(ptr, should_free);
-	return ptr;
+	return should_free->var = ptr;
 }
 
 static zend_never_inline zval **_get_zval_cv_lookup(zval ***ptr, zend_uint var, int type TSRMLS_DC)
@@ -382,6 +381,19 @@ static zend_always_inline zval **_get_zval_ptr_ptr_var(zend_uint var, const zend
 	} else {
 		/* string offset */
 		PZVAL_UNLOCK(EX_T(var).str_offset.str, should_free);
+	}
+	return ptr_ptr;
+}
+
+static zend_always_inline zval **_get_zval_ptr_ptr_var_fast(zend_uint var, const zend_execute_data *execute_data, zend_free_op *should_free TSRMLS_DC)
+{
+	zval** ptr_ptr = EX_T(var).var.ptr_ptr;
+
+	if (EXPECTED(ptr_ptr != NULL)) {
+		should_free->var = *ptr_ptr;
+	} else {
+		/* string offset */
+		should_free->var = EX_T(var).str_offset.str;
 	}
 	return ptr_ptr;
 }
@@ -898,13 +910,10 @@ static inline zval* zend_assign_to_variable(zval **variable_ptr_ptr, zval *value
 			} else if (EXPECTED(!PZVAL_IS_REF(value))) {
 				Z_ADDREF_P(value);
 				*variable_ptr_ptr = value;
-				if (EXPECTED(variable_ptr != &EG(uninitialized_zval))) {
-					GC_REMOVE_ZVAL_FROM_BUFFER(variable_ptr);
-					zval_dtor(variable_ptr);
-					efree(variable_ptr);
-				} else {
-					Z_DELREF_P(variable_ptr);
-				}
+				ZEND_ASSERT(variable_ptr != &EG(uninitialized_zval));
+				GC_REMOVE_ZVAL_FROM_BUFFER(variable_ptr);
+				zval_dtor(variable_ptr);
+				efree(variable_ptr);
 				return value;
 			} else {
 				goto copy_value;
@@ -912,7 +921,7 @@ static inline zval* zend_assign_to_variable(zval **variable_ptr_ptr, zval *value
 		} else { /* we need to split */
 			Z_DELREF_P(variable_ptr);
 			GC_ZVAL_CHECK_POSSIBLE_ROOT(variable_ptr);
-			if (PZVAL_IS_REF(value) && Z_REFCOUNT_P(value) > 0) {
+			if (PZVAL_IS_REF(value)) {
 				ALLOC_ZVAL(variable_ptr);
 				*variable_ptr_ptr = variable_ptr;
 				INIT_PZVAL_COPY(variable_ptr, value);
@@ -921,7 +930,6 @@ static inline zval* zend_assign_to_variable(zval **variable_ptr_ptr, zval *value
 			} else {
 				*variable_ptr_ptr = value;
 				Z_ADDREF_P(value);
-				Z_UNSET_ISREF_P(value);
 				return value;
 			}
 		}
@@ -1147,6 +1155,10 @@ convert_to_array:
 					zend_error_noreturn(E_ERROR, "[] operator not supported for strings");
 				}
 
+				if (type != BP_VAR_UNSET) {
+					SEPARATE_ZVAL_IF_NOT_REF(container_ptr);
+				}
+
 				if (Z_TYPE_P(dim) != IS_LONG) {
 
 					switch(Z_TYPE_P(dim)) {
@@ -1174,9 +1186,6 @@ convert_to_array:
 					zval_copy_ctor(&tmp);
 					convert_to_long(&tmp);
 					dim = &tmp;
-				}
-				if (type != BP_VAR_UNSET) {
-					SEPARATE_ZVAL_IF_NOT_REF(container_ptr);
 				}
 				container = *container_ptr;
 				result->str_offset.str = container;
@@ -1384,7 +1393,7 @@ static void zend_fetch_property_address(temp_variable *result, zval **container_
 	}
 
 	if (Z_OBJ_HT_P(container)->get_property_ptr_ptr) {
-		zval **ptr_ptr = Z_OBJ_HT_P(container)->get_property_ptr_ptr(container, prop_ptr, key TSRMLS_CC);
+		zval **ptr_ptr = Z_OBJ_HT_P(container)->get_property_ptr_ptr(container, prop_ptr, type, key TSRMLS_CC);
 		if (NULL == ptr_ptr) {
 			zval *ptr;
 
@@ -1523,9 +1532,9 @@ void zend_free_compiled_variables(zend_execute_data *execute_data) /* {{{ */
 }
 /* }}} */
 
-/*  
+/*
  * Stack Frame Layout (the whole stack frame is allocated at once)
- * ================== 
+ * ==================
  *
  *                             +========================================+
  *                             | zend_execute_data                      |<---+
@@ -1598,8 +1607,8 @@ static zend_always_inline zend_execute_data *i_create_execute_data_from_op_array
 	 * a copy of previous execute_data and passed parameters.
 	 */
 	if (UNEXPECTED((op_array->fn_flags & ZEND_ACC_GENERATOR) != 0)) {
-		/* Prepend the regular stack frame with copy on prev_execute_data
-		 * and passed arguments
+		/* Prepend the regular stack frame with a copy of prev_execute_data
+		 * and the passed arguments
 		 */
 		int args_count = zend_vm_stack_get_args_count_ex(EG(current_execute_data));
 		size_t args_size = ZEND_MM_ALIGNED_SIZE(sizeof(zval*)) * (args_count + 1);
@@ -1616,7 +1625,7 @@ static zend_always_inline zend_execute_data *i_create_execute_data_from_op_array
 		EX(prev_execute_data)->function_state.function = (zend_function*)op_array;
 		EX(prev_execute_data)->function_state.arguments = (void**)((char*)ZEND_VM_STACK_ELEMETS(EG(argument_stack)) + ZEND_MM_ALIGNED_SIZE(sizeof(zval*)) * args_count);
 
-		/* copy arguemnts */
+		/* copy arguments */
 		*EX(prev_execute_data)->function_state.arguments = (void*)(zend_uintptr_t)args_count;
 		if (args_count > 0) {
 			zval **arg_src = (zval**)zend_vm_stack_get_arg_ex(EG(current_execute_data), 1);

@@ -2,7 +2,7 @@
   +----------------------------------------------------------------------+
   | PHP Version 5                                                        |
   +----------------------------------------------------------------------+
-  | Copyright (c) 1997-2012 The PHP Group                                |
+  | Copyright (c) 1997-2013 The PHP Group                                |
   +----------------------------------------------------------------------+
   | This source file is subject to version 3.01 of the PHP license,      |
   | that is bundled with this package in the file LICENSE, and is        |
@@ -185,7 +185,7 @@ static int json_determine_array_type(zval **val TSRMLS_DC) /* {{{ */
 		idx = 0;
 		for (;; zend_hash_move_forward_ex(myht, &pos)) {
 			i = zend_hash_get_current_key_ex(myht, &key, &key_len, &index, 0, &pos);
-			if (i == HASH_KEY_NON_EXISTANT) {
+			if (i == HASH_KEY_NON_EXISTENT) {
 				break;
 			}
 
@@ -271,7 +271,7 @@ static void json_encode_array(smart_str *buf, zval **val, int options TSRMLS_DC)
 		zend_hash_internal_pointer_reset_ex(myht, &pos);
 		for (;; zend_hash_move_forward_ex(myht, &pos)) {
 			i = zend_hash_get_current_key_ex(myht, &key, &key_len, &index, 0, &pos);
-			if (i == HASH_KEY_NON_EXISTANT)
+			if (i == HASH_KEY_NON_EXISTENT)
 				break;
 
 			if (zend_hash_get_current_data_ex(myht, (void **) &data, &pos) == SUCCESS) {
