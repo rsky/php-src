@@ -784,6 +784,9 @@ PHPAPI void php_verror(const char *docref, const char *params, int type, const c
 	/* no docref given but function is known (the default) */
 	if (!docref && is_function) {
 		int doclen;
+		while (*function == '_') {
+			function++;
+		}
 		if (space[0] == '\0') {
 			doclen = spprintf(&docref_buf, 0, "function.%s", function);
 		} else {
@@ -1332,7 +1335,7 @@ PHPAPI int php_stream_open_for_zend_ex(const char *filename, zend_file_handle *h
 		handle->handle.stream.reader  = (zend_stream_reader_t)_php_stream_read;
 		handle->handle.stream.fsizer  = php_zend_stream_fsizer;
 		handle->handle.stream.isatty  = 0;
-		/* can we mmap immeadiately? */
+		/* can we mmap immediately? */
 		memset(&handle->handle.stream.mmap, 0, sizeof(handle->handle.stream.mmap));
 		len = php_zend_stream_fsizer(stream TSRMLS_CC);
 		if (len != 0
@@ -2070,6 +2073,8 @@ int php_module_startup(sapi_module_struct *sf, zend_module_entry *additional_mod
 	EG(exception_class) = NULL;
 	PG(disable_functions) = NULL;
 	PG(disable_classes) = NULL;
+	EG(exception) = NULL;
+	EG(objects_store).object_buckets = NULL;
 
 #if HAVE_SETLOCALE
 	setlocale(LC_CTYPE, "");
@@ -2182,7 +2187,7 @@ int php_module_startup(sapi_module_struct *sf, zend_module_entry *additional_mod
 	zend_set_utility_values(&zuv);
 	php_startup_sapi_content_types(TSRMLS_C);
 
-	/* startup extensions staticly compiled in */
+	/* startup extensions statically compiled in */
 	if (php_register_internal_extensions_func(TSRMLS_C) == FAILURE) {
 		php_printf("Unable to start builtin modules\n");
 		return FAILURE;
@@ -2397,8 +2402,8 @@ PHPAPI int php_execute_script(zend_file_handle *primary_file TSRMLS_DC)
 {
 	zend_file_handle *prepend_file_p, *append_file_p;
 	zend_file_handle prepend_file = {0}, append_file = {0};
-#if HAVE_BROKEN_GETCWD
-	int old_cwd_fd = -1;
+#if HAVE_BROKEN_GETCWD 
+	volatile int old_cwd_fd = -1;
 #else
 	char *old_cwd;
 	ALLOCA_FLAG(use_heap)
