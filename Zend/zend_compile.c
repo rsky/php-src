@@ -288,7 +288,7 @@ ZEND_API zend_bool zend_is_compiling(TSRMLS_D) /* {{{ */
 
 static zend_uint get_temporary_variable(zend_op_array *op_array) /* {{{ */
 {
-	return (zend_uint)EX_TMP_VAR_NUM(0, (op_array->T)++);
+	return (zend_uint)(zend_uintptr_t)EX_TMP_VAR_NUM(0, (op_array->T)++);
 }
 /* }}} */
 
@@ -1621,6 +1621,10 @@ void zend_do_begin_function_declaration(znode *function_token, znode *function_n
 				if (fn_flags & ((ZEND_ACC_PPP_MASK | ZEND_ACC_STATIC) ^ ZEND_ACC_PUBLIC)) {
 					zend_error(E_WARNING, "The magic method __toString() must have public visibility and cannot be static");
 				}
+			} else if ((name_len == sizeof(ZEND_INVOKE_FUNC_NAME)-1) && (!memcmp(lcname, ZEND_INVOKE_FUNC_NAME, sizeof(ZEND_INVOKE_FUNC_NAME)-1))) {
+				if (fn_flags & ((ZEND_ACC_PPP_MASK | ZEND_ACC_STATIC) ^ ZEND_ACC_PUBLIC)) {
+					zend_error(E_WARNING, "The magic method __invoke() must have public visibility and cannot be static");
+				}
 			}
 		} else {
 			char *class_lcname;
@@ -1677,6 +1681,10 @@ void zend_do_begin_function_declaration(znode *function_token, znode *function_n
 					zend_error(E_WARNING, "The magic method __toString() must have public visibility and cannot be static");
 				}
 				CG(active_class_entry)->__tostring = (zend_function *) CG(active_op_array);
+			} else if ((name_len == sizeof(ZEND_INVOKE_FUNC_NAME)-1) && (!memcmp(lcname, ZEND_INVOKE_FUNC_NAME, sizeof(ZEND_INVOKE_FUNC_NAME)-1))) {
+				if (fn_flags & ((ZEND_ACC_PPP_MASK | ZEND_ACC_STATIC) ^ ZEND_ACC_PUBLIC)) {
+					zend_error(E_WARNING, "The magic method __invoke() must have public visibility and cannot be static");
+				}
 			} else if (!(fn_flags & ZEND_ACC_STATIC)) {
 				CG(active_op_array)->fn_flags |= ZEND_ACC_ALLOW_STATIC;
 			}
@@ -1801,7 +1809,7 @@ void zend_do_end_function_declaration(const znode *function_token TSRMLS_DC) /* 
 	zend_do_return(NULL, 0 TSRMLS_CC);
 
 	pass_two(CG(active_op_array) TSRMLS_CC);
-	zend_release_labels(TSRMLS_C);
+	zend_release_labels(0 TSRMLS_CC);
 
 	if (CG(active_class_entry)) {
 		zend_check_magic_method_implementation(CG(active_class_entry), (zend_function*)CG(active_op_array), E_COMPILE_ERROR TSRMLS_CC);
@@ -2383,13 +2391,14 @@ void zend_do_goto(const znode *label TSRMLS_DC) /* {{{ */
 }
 /* }}} */
 
-void zend_release_labels(TSRMLS_D) /* {{{ */
+void zend_release_labels(int temporary TSRMLS_DC) /* {{{ */
 {
 	if (CG(context).labels) {
 		zend_hash_destroy(CG(context).labels);
 		FREE_HASHTABLE(CG(context).labels);
+		CG(context).labels = NULL;
 	}
-	if (!zend_stack_is_empty(&CG(context_stack))) {
+	if (!temporary && !zend_stack_is_empty(&CG(context_stack))) {
 		zend_compiler_context *ctx;
 
 		zend_stack_top(&CG(context_stack), (void**)&ctx);
@@ -3455,11 +3464,11 @@ static void do_inheritance_check_on_method(zend_function *child, zend_function *
 
 	if (child->common.prototype && (child->common.prototype->common.fn_flags & ZEND_ACC_ABSTRACT)) {
 		if (!zend_do_perform_implementation_check(child, child->common.prototype TSRMLS_CC)) {
-			zend_error(E_COMPILE_ERROR, "Declaration of %s::%s() must be compatible with %s", ZEND_FN_SCOPE_NAME(child), child->common.function_name, zend_get_function_declaration(child->common.prototype? child->common.prototype : parent TSRMLS_CC));
+			zend_error(E_COMPILE_ERROR, "Declaration of %s::%s() must be compatible with %s", ZEND_FN_SCOPE_NAME(child), child->common.function_name, zend_get_function_declaration(child->common.prototype TSRMLS_CC));
 		}
 	} else if (EG(error_reporting) & E_STRICT || EG(user_error_handler)) { /* Check E_STRICT (or custom error handler) before the check so that we save some time */
 		if (!zend_do_perform_implementation_check(child, parent TSRMLS_CC)) {
-			char *method_prototype = zend_get_function_declaration(child->common.prototype? child->common.prototype : parent TSRMLS_CC);
+			char *method_prototype = zend_get_function_declaration(parent TSRMLS_CC);
 			zend_error(E_STRICT, "Declaration of %s::%s() should be compatible with %s", ZEND_FN_SCOPE_NAME(child), child->common.function_name, method_prototype);
 			efree(method_prototype);
 		}
@@ -3823,7 +3832,7 @@ static zend_bool zend_traits_method_compatibility_check(zend_function *fn, zend_
 	zend_uint other_flags = other_fn->common.scope->ce_flags;
 
 	return zend_do_perform_implementation_check(fn, other_fn TSRMLS_CC)
-		&& zend_do_perform_implementation_check(other_fn, fn TSRMLS_CC)
+		&& ((other_fn->common.scope->ce_flags & ZEND_ACC_INTERFACE) || zend_do_perform_implementation_check(other_fn, fn TSRMLS_CC))
 		&& ((fn_flags & (ZEND_ACC_FINAL|ZEND_ACC_STATIC)) ==
 		    (other_flags & (ZEND_ACC_FINAL|ZEND_ACC_STATIC))); /* equal final and static qualifier */
 }
@@ -3932,7 +3941,7 @@ static void zend_add_trait_method(zend_class_entry *ce, const char *name, const 
 #endif
 		} else {
 			/* inherited members are overridden by members inserted by traits */
-			/* check whether the trait method fullfills the inheritance requirements */
+			/* check whether the trait method fulfills the inheritance requirements */
 			do_inheritance_check_on_method(fn, existing_fn TSRMLS_CC);
 		}
 	}
@@ -4048,12 +4057,16 @@ static void zend_check_trait_usage(zend_class_entry *ce, zend_class_entry *trait
 {
 	zend_uint i;
 
+	if ((trait->ce_flags & ZEND_ACC_TRAIT) != ZEND_ACC_TRAIT) {
+		zend_error(E_COMPILE_ERROR, "Class %s is not a trait, Only traits may be used in 'as' and 'insteadof' statements", trait->name);
+	}
+
 	for (i = 0; i < ce->num_traits; i++) {
 		if (ce->traits[i] == trait) {
 			return;
 		}
 	}
-	zend_error(E_COMPILE_ERROR, "Trait %s is not used", trait->name);
+	zend_error(E_COMPILE_ERROR, "Required Trait %s wasn't added to %s", trait->name, ce->name);
 }
 /* }}} */
 
@@ -4095,7 +4108,7 @@ static void zend_traits_init_trait_structures(zend_class_entry *ce TSRMLS_DC) /*
 				/** With the other traits, we are more permissive.
 					We do not give errors for those. This allows to be more
 					defensive in such definitions.
-					However, we want to make sure that the insteadof declartion
+					However, we want to make sure that the insteadof declaration
 					is consistent in itself.
 				 */
 				j = 0;
@@ -5809,7 +5822,7 @@ void zend_do_shell_exec(znode *result, const znode *cmd TSRMLS_DC) /* {{{ */
 			break;
 	}
 	SET_NODE(opline->op1, cmd);
-	opline->op2.opline_num = 0;
+	opline->op2.opline_num = 1;
 	opline->extended_value = ZEND_DO_FCALL;
 	SET_UNUSED(opline->op2);
 
@@ -5824,6 +5837,7 @@ void zend_do_shell_exec(znode *result, const znode *cmd TSRMLS_DC) /* {{{ */
 	GET_CACHE_SLOT(opline->op1.constant);
 	opline->extended_value = 1;
 	SET_UNUSED(opline->op2);
+	opline->op2.num = CG(context).nested_calls;
 	GET_NODE(result, opline->result);
 
 	if (CG(context).nested_calls + 1 > CG(active_op_array)->nested_calls) {
@@ -7297,7 +7311,7 @@ ZEND_API size_t zend_dirname(char *path, size_t len)
 	}
 #elif defined(NETWARE)
 	/*
-	 * Find the first occurence of : from the left
+	 * Find the first occurrence of : from the left
 	 * move the path pointer to the position just after :
 	 * increment the len_adjust to the length of path till colon character(inclusive)
 	 * If there is no character beyond : simple return len

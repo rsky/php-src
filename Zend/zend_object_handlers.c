@@ -714,7 +714,7 @@ static int zend_std_has_dimension(zval *object, zval *offset, int check_empty TS
 }
 /* }}} */
 
-static zval **zend_std_get_property_ptr_ptr(zval *object, zval *member, const zend_literal *key TSRMLS_DC) /* {{{ */
+static zval **zend_std_get_property_ptr_ptr(zval *object, zval *member, int type, const zend_literal *key TSRMLS_DC) /* {{{ */
 {
 	zend_object *zobj;
 	zval tmp_member;
@@ -754,7 +754,9 @@ static zval **zend_std_get_property_ptr_ptr(zval *object, zval *member, const ze
 			/* we don't have access controls - will just add it */
 			new_zval = &EG(uninitialized_zval);
 
-/* 			zend_error(E_NOTICE, "Undefined property: %s", Z_STRVAL_P(member)); */
+			if(UNEXPECTED(type == BP_VAR_RW || type == BP_VAR_R)) {
+				zend_error(E_NOTICE, "Undefined property: %s::$%s", zobj->ce->name, Z_STRVAL_P(member));
+			}
 			Z_ADDREF_P(new_zval);
 			if (EXPECTED((property_info->flags & ZEND_ACC_STATIC) == 0) &&
 			    property_info->offset >= 0) {
@@ -1279,6 +1281,14 @@ ZEND_API zval **zend_std_get_static_property(zend_class_entry *ce, const char *p
 		}
 	}
 
+	if (UNEXPECTED(CE_STATIC_MEMBERS(ce) == NULL) ||
+	    UNEXPECTED(CE_STATIC_MEMBERS(ce)[property_info->offset] == NULL)) {
+		if (!silent) {
+			zend_error_noreturn(E_ERROR, "Access to undeclared static property: %s::$%s", ce->name, property_name);
+		}
+		return NULL;
+	}
+	
 	return &CE_STATIC_MEMBERS(ce)[property_info->offset];
 }
 /* }}} */
@@ -1641,6 +1651,8 @@ ZEND_API zend_object_handlers std_object_handlers = {
 	NULL,									/* get_debug_info */
 	zend_std_get_closure,					/* get_closure */
 	zend_std_get_gc,						/* get_gc */
+	NULL,									/* do_operation */
+	NULL,									/* compare */
 };
 
 /*
