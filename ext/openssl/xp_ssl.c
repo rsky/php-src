@@ -2,7 +2,7 @@
   +----------------------------------------------------------------------+
   | PHP Version 5                                                        |
   +----------------------------------------------------------------------+
-  | Copyright (c) 1997-2013 The PHP Group                                |
+  | Copyright (c) 1997-2014 The PHP Group                                |
   +----------------------------------------------------------------------+
   | This source file is subject to version 3.01 of the PHP license,      |
   | that is bundled with this package in the file LICENSE, and is        |
@@ -23,8 +23,8 @@
 #include "ext/standard/url.h"
 #include "streams/php_streams_int.h"
 #include "ext/standard/php_smart_str.h"
-#include "php_network.h"
 #include "php_openssl.h"
+#include "php_openssl_structs.h"
 #include <openssl/ssl.h>
 #include <openssl/x509.h>
 #include <openssl/err.h>
@@ -40,25 +40,6 @@
 int php_openssl_apply_verification_policy(SSL *ssl, X509 *peer, php_stream *stream TSRMLS_DC);
 SSL *php_SSL_new_from_context(SSL_CTX *ctx, php_stream *stream TSRMLS_DC);
 int php_openssl_get_x509_list_id(void);
-
-/* This implementation is very closely tied to the that of the native
- * sockets implemented in the core.
- * Don't try this technique in other extensions!
- * */
-
-typedef struct _php_openssl_netstream_data_t {
-	php_netstream_data_t s;
-	SSL *ssl_handle;
-	SSL_CTX *ctx;
-	struct timeval connect_timeout;
-	int enable_on_connect;
-	int is_client;
-	int ssl_active;
-	php_stream_xport_crypt_method_t method;
-	char *sni;
-	unsigned state_set:1;
-	unsigned _spare:31;
-} php_openssl_netstream_data_t;
 
 php_stream_ops php_openssl_socket_ops;
 
@@ -285,11 +266,12 @@ static int php_openssl_sockop_close(php_stream *stream, int close_handle TSRMLS_
 		}
 	}
 
-	if (sslsock->sni) {
-		pefree(sslsock->sni, php_stream_is_persistent(stream));
+	if (sslsock->url_name) {
+		pefree(sslsock->url_name, php_stream_is_persistent(stream));
 	}
+
 	pefree(sslsock, php_stream_is_persistent(stream));
-	
+
 	return 0;
 }
 
@@ -309,7 +291,7 @@ static inline int php_openssl_setup_crypto(php_stream *stream,
 		php_stream_xport_crypto_param *cparam
 		TSRMLS_DC)
 {
-	SSL_METHOD *method;
+	const SSL_METHOD *method;
 	long ssl_ctx_options = SSL_OP_ALL;
 	
 	if (sslsock->ssl_handle) {
@@ -346,6 +328,24 @@ static inline int php_openssl_setup_crypto(php_stream *stream,
 			sslsock->is_client = 1;
 			method = TLSv1_client_method();
 			break;
+		case STREAM_CRYPTO_METHOD_TLSv1_1_CLIENT:
+#if OPENSSL_VERSION_NUMBER >= 0x10001001L
+			sslsock->is_client = 1;
+			method = TLSv1_1_client_method();
+			break;
+#else
+			php_error_docref(NULL TSRMLS_CC, E_WARNING, "TLSv1.1 support is not compiled into the OpenSSL library PHP is linked against");
+			return -1;
+#endif
+		case STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT:
+#if OPENSSL_VERSION_NUMBER >= 0x10001001L
+			sslsock->is_client = 1;
+			method = TLSv1_2_client_method();
+			break;
+#else
+			php_error_docref(NULL TSRMLS_CC, E_WARNING, "TLSv1.2 support is not compiled into the OpenSSL library PHP is linked against");
+			return -1;
+#endif
 		case STREAM_CRYPTO_METHOD_SSLv23_SERVER:
 			sslsock->is_client = 0;
 			method = SSLv23_server_method();
@@ -367,6 +367,24 @@ static inline int php_openssl_setup_crypto(php_stream *stream,
 			sslsock->is_client = 0;
 			method = TLSv1_server_method();
 			break;
+		case STREAM_CRYPTO_METHOD_TLSv1_1_SERVER:
+#if OPENSSL_VERSION_NUMBER >= 0x10001001L
+			sslsock->is_client = 0;
+			method = TLSv1_1_server_method();
+			break;
+#else
+			php_error_docref(NULL TSRMLS_CC, E_WARNING, "TLSv1.1 support is not compiled into the OpenSSL library PHP is linked against");
+			return -1;
+#endif
+		case STREAM_CRYPTO_METHOD_TLSv1_2_SERVER:
+#if OPENSSL_VERSION_NUMBER >= 0x10001001L
+			sslsock->is_client = 0;
+			method = TLSv1_2_server_method();
+			break;
+#else
+			php_error_docref(NULL TSRMLS_CC, E_WARNING, "TLSv1.2 support is not compiled into the OpenSSL library PHP is linked against");
+			return -1;
+#endif
 		default:
 			return -1;
 
@@ -389,7 +407,8 @@ static inline int php_openssl_setup_crypto(php_stream *stream,
 
 		if (stream->context && SUCCESS == php_stream_context_get_option(
 					stream->context, "ssl", "no_ticket", &val) && 
-				zval_is_true(*val)) {
+				zend_is_true(*val TSRMLS_CC)
+		) {
 			SSL_CTX_set_options(sslsock->ctx, SSL_OP_NO_TICKET);
 		}
 	}
@@ -401,7 +420,8 @@ static inline int php_openssl_setup_crypto(php_stream *stream,
 
 		if (stream->context && SUCCESS == php_stream_context_get_option(
 					stream->context, "ssl", "disable_compression", &val) &&
-				zval_is_true(*val)) {
+				zend_is_true(*val TSRMLS_CC)
+		) {
 			SSL_CTX_set_options(sslsock->ctx, SSL_OP_NO_COMPRESSION);
 		}
 	}
@@ -431,6 +451,7 @@ static inline int php_openssl_setup_crypto(php_stream *stream,
 	return 0;
 }
 
+
 static inline int php_openssl_enable_crypto(php_stream *stream,
 		php_openssl_netstream_data_t *sslsock,
 		php_stream_xport_crypto_param *cparam
@@ -444,10 +465,22 @@ static inline int php_openssl_enable_crypto(php_stream *stream,
 		int				blocked		= sslsock->s.is_blocked,
 						has_timeout = 0;
 
-#if OPENSSL_VERSION_NUMBER >= 0x0090806fL && !defined(OPENSSL_NO_TLSEXT)
-		if (sslsock->is_client && sslsock->sni) {
-			SSL_set_tlsext_host_name(sslsock->ssl_handle, sslsock->sni);
+#if OPENSSL_VERSION_NUMBER >= 0x00908070L && !defined(OPENSSL_NO_TLSEXT)
+
+		zval **val;
+
+		if (sslsock->is_client
+			&& (php_stream_context_get_option(stream->context, "ssl", "SNI_enabled", &val) == FAILURE
+				|| zend_is_true(*val TSRMLS_CC))
+		) {
+			if (php_stream_context_get_option(stream->context, "ssl", "SNI_server_name", &val) == SUCCESS) {
+				convert_to_string_ex(val);
+				SSL_set_tlsext_host_name(sslsock->ssl_handle, Z_STRVAL_PP(val));
+			} else if (sslsock->url_name) {
+				SSL_set_tlsext_host_name(sslsock->ssl_handle, sslsock->url_name);
+			}
 		}
+
 #endif
 
 		if (!sslsock->state_set) {
@@ -472,7 +505,7 @@ static inline int php_openssl_enable_crypto(php_stream *stream,
 		
 		do {
 			struct timeval	cur_time,
-							elapsed_time;
+							elapsed_time = {0};
 			
 			if (sslsock->is_client) {
 				n = SSL_connect(sslsock->ssl_handle);
@@ -545,7 +578,7 @@ static inline int php_openssl_enable_crypto(php_stream *stream,
 					if (SUCCESS == php_stream_context_get_option(
 								stream->context, "ssl",
 								"capture_peer_cert", &val) &&
-							zval_is_true(*val)) {
+							zend_is_true(*val TSRMLS_CC)) {
 						MAKE_STD_ZVAL(zcert);
 						ZVAL_RESOURCE(zcert, zend_list_insert(peer_cert, 
 									php_openssl_get_x509_list_id() TSRMLS_CC));
@@ -559,7 +592,7 @@ static inline int php_openssl_enable_crypto(php_stream *stream,
 					if (SUCCESS == php_stream_context_get_option(
 								stream->context, "ssl",
 								"capture_peer_cert_chain", &val) &&
-							zval_is_true(*val)) {
+							zend_is_true(*val TSRMLS_CC)) {
 						zval *arr;
 						STACK_OF(X509) *chain;
 
@@ -666,6 +699,12 @@ static inline int php_openssl_tcp_sockop_accept(php_stream *stream, php_openssl_
 					break;
 				case STREAM_CRYPTO_METHOD_TLS_CLIENT:
 					sock->method = STREAM_CRYPTO_METHOD_TLS_SERVER;
+					break;
+				case STREAM_CRYPTO_METHOD_TLSv1_1_CLIENT:
+					sock->method = STREAM_CRYPTO_METHOD_TLSv1_1_SERVER;
+					break;
+				case STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT:
+					sock->method = STREAM_CRYPTO_METHOD_TLSv1_2_SERVER;
 					break;
 				default:
 					break;
@@ -825,7 +864,7 @@ static int php_openssl_sockop_cast(php_stream *stream, int castas, void **ret TS
 
 		case PHP_STREAM_AS_FD_FOR_SELECT:
 			if (ret) {
-				*(int *)ret = sslsock->s.socket;
+				*(php_socket_t *)ret = sslsock->s.socket;
 			}
 			return SUCCESS;
 
@@ -835,7 +874,7 @@ static int php_openssl_sockop_cast(php_stream *stream, int castas, void **ret TS
 				return FAILURE;
 			}
 			if (ret) {
-				*(int *)ret = sslsock->s.socket;
+				*(php_socket_t *)ret = sslsock->s.socket;
 			}
 			return SUCCESS;
 		default:
@@ -853,21 +892,33 @@ php_stream_ops php_openssl_socket_ops = {
 	php_openssl_sockop_set_option,
 };
 
-static char * get_sni(php_stream_context *ctx, char *resourcename, long resourcenamelen, int is_persistent TSRMLS_DC) {
+static int get_crypto_method(php_stream_context *ctx) {
+        if (ctx) {
+                zval **val = NULL;
+                long crypto_method;
 
+                if (php_stream_context_get_option(ctx, "ssl", "crypto_method", &val) == SUCCESS) {
+                        convert_to_long_ex(val);
+                        crypto_method = (long)Z_LVAL_PP(val);
+
+                        switch (crypto_method) {
+                                case STREAM_CRYPTO_METHOD_SSLv2_CLIENT:
+                                case STREAM_CRYPTO_METHOD_SSLv3_CLIENT:
+                                case STREAM_CRYPTO_METHOD_SSLv23_CLIENT:
+                                case STREAM_CRYPTO_METHOD_TLS_CLIENT:
+                                case STREAM_CRYPTO_METHOD_TLSv1_1_CLIENT:
+                                case STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT:
+                                        return crypto_method;
+                        }
+
+                }
+        }
+
+        return STREAM_CRYPTO_METHOD_SSLv23_CLIENT;
+}
+
+static char * get_url_name(const char *resourcename, size_t resourcenamelen, int is_persistent TSRMLS_DC) {
 	php_url *url;
-
-	if (ctx) {
-		zval **val = NULL;
-
-		if (php_stream_context_get_option(ctx, "ssl", "SNI_enabled", &val) == SUCCESS && !zend_is_true(*val)) {
-			return NULL;
-		}
-		if (php_stream_context_get_option(ctx, "ssl", "SNI_server_name", &val) == SUCCESS) {
-			convert_to_string_ex(val);
-			return pestrdup(Z_STRVAL_PP(val), is_persistent);
-		}
-	}
 
 	if (!resourcename) {
 		return NULL;
@@ -880,7 +931,7 @@ static char * get_sni(php_stream_context *ctx, char *resourcename, long resource
 
 	if (url->host) {
 		const char * host = url->host;
-		char * sni = NULL;
+		char * url_name = NULL;
 		size_t len = strlen(host);
 
 		/* skip trailing dots */
@@ -889,19 +940,19 @@ static char * get_sni(php_stream_context *ctx, char *resourcename, long resource
 		}
 
 		if (len) {
-			sni = pestrndup(host, len, is_persistent);
+			url_name = pestrndup(host, len, is_persistent);
 		}
 
 		php_url_free(url);
-		return sni;
+		return url_name;
 	}
 
 	php_url_free(url);
 	return NULL;
 }
 
-php_stream *php_openssl_ssl_socket_factory(const char *proto, long protolen,
-		char *resourcename, long resourcenamelen,
+php_stream *php_openssl_ssl_socket_factory(const char *proto, size_t protolen,
+		const char *resourcename, size_t resourcenamelen,
 		const char *persistent_id, int options, int flags,
 		struct timeval *timeout,
 		php_stream_context *context STREAMS_DC TSRMLS_DC)
@@ -935,11 +986,14 @@ php_stream *php_openssl_ssl_socket_factory(const char *proto, long protolen,
 		return NULL;
 	}
 
-	sslsock->sni = get_sni(context, resourcename, resourcenamelen, !!persistent_id TSRMLS_CC);
-	
 	if (strncmp(proto, "ssl", protolen) == 0) {
 		sslsock->enable_on_connect = 1;
-		sslsock->method = STREAM_CRYPTO_METHOD_SSLv23_CLIENT;
+
+		/* General ssl:// transports can use a number
+		 * of crypto methods. The actual methhod can be
+		 * provided in the streams context options.
+		 */ 
+		sslsock->method = get_crypto_method(context);
 	} else if (strncmp(proto, "sslv2", protolen) == 0) {
 #ifdef OPENSSL_NO_SSL2
 		php_error_docref(NULL TSRMLS_CC, E_WARNING, "SSLv2 support is not compiled into the OpenSSL library PHP is linked against");
@@ -954,7 +1008,25 @@ php_stream *php_openssl_ssl_socket_factory(const char *proto, long protolen,
 	} else if (strncmp(proto, "tls", protolen) == 0) {
 		sslsock->enable_on_connect = 1;
 		sslsock->method = STREAM_CRYPTO_METHOD_TLS_CLIENT;
+	} else if (strncmp(proto, "tlsv1.1", protolen) == 0) {
+#if OPENSSL_VERSION_NUMBER >= 0x10001001L
+		sslsock->enable_on_connect = 1;
+		sslsock->method = STREAM_CRYPTO_METHOD_TLSv1_1_CLIENT;
+#else
+		php_error_docref(NULL TSRMLS_CC, E_WARNING, "TLSv1.1 support is not compiled into the OpenSSL library PHP is linked against");
+		return NULL;
+#endif
+	} else if (strncmp(proto, "tlsv1.2", protolen) == 0) {
+#if OPENSSL_VERSION_NUMBER >= 0x10001001L
+		sslsock->enable_on_connect = 1;
+		sslsock->method = STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT;
+#else
+		php_error_docref(NULL TSRMLS_CC, E_WARNING, "TLSv1.2 support is not compiled into the OpenSSL library PHP is linked against");
+		return NULL;
+#endif
 	}
+
+	sslsock->url_name = get_url_name(resourcename, resourcenamelen, !!persistent_id TSRMLS_CC);
 
 	return stream;
 }

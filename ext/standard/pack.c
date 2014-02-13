@@ -2,7 +2,7 @@
    +----------------------------------------------------------------------+
    | PHP Version 5                                                        |
    +----------------------------------------------------------------------+
-   | Copyright (c) 1997-2013 The PHP Group                                |
+   | Copyright (c) 1997-2014 The PHP Group                                |
    +----------------------------------------------------------------------+
    | This source file is subject to version 3.01 of the PHP license,      |
    | that is bundled with this package in the file LICENSE, and is        |
@@ -514,7 +514,7 @@ static long php_unpack(char *data, int size, int issigned, int *map)
 
 /* unpack() is based on Perl's unpack(), but is modified a bit from there.
  * Rather than depending on error-prone ordered lists or syntactically
- * unpleasant pass-by-reference, we return an object with named paramters 
+ * unpleasant pass-by-reference, we return an object with named parameters 
  * (like *_fetch_object()). Syntax is "f[repeat]name/...", where "f" is the
  * formatter char (like pack()), "[repeat]" is the optional repeater argument,
  * and "name" is the name of the variable to use.

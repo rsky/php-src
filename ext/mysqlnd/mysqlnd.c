@@ -2,7 +2,7 @@
   +----------------------------------------------------------------------+
   | PHP Version 5                                                        |
   +----------------------------------------------------------------------+
-  | Copyright (c) 2006-2013 The PHP Group                                |
+  | Copyright (c) 2006-2014 The PHP Group                                |
   +----------------------------------------------------------------------+
   | This source file is subject to version 3.01 of the PHP license,      |
   | that is bundled with this package in the file LICENSE, and is        |
@@ -257,6 +257,7 @@ MYSQLND_METHOD(mysqlnd_conn_data, simple_command_handle_response)(MYSQLND_CONN_D
 									conn->persistent);
 
 					if (!ignore_upsert_status) {
+						memset(conn->upsert_status, 0, sizeof(*conn->upsert_status));
 						conn->upsert_status->warning_count = ok_response->warning_count;
 						conn->upsert_status->server_status = ok_response->server_status;
 						conn->upsert_status->affected_rows = ok_response->affected_rows;
@@ -319,6 +320,7 @@ MYSQLND_METHOD(mysqlnd_conn_data, simple_command_send_request)(MYSQLND_CONN_DATA
 
 	DBG_ENTER("mysqlnd_conn_data::simple_command_send_request");
 	DBG_INF_FMT("command=%s silent=%u", mysqlnd_command_to_text[command], silent);
+	DBG_INF_FMT("conn->server_status=%u", conn->upsert_status->server_status);
 
 	switch (CONN_GET_STATE(conn)) {
 		case CONN_READY:
@@ -333,10 +335,6 @@ MYSQLND_METHOD(mysqlnd_conn_data, simple_command_send_request)(MYSQLND_CONN_DATA
 			DBG_RETURN(FAIL);
 	}
 
-	/* clean UPSERT info */
-	if (!ignore_upsert_status) {
-		memset(conn->upsert_status, 0, sizeof(*conn->upsert_status));
-	}
 	SET_ERROR_AFF_ROWS(conn);
 	SET_EMPTY_ERROR(*conn->error_info);
 
@@ -557,7 +555,7 @@ mysqlnd_run_authentication(
 
 		if (!auth_plugin) {
 			php_error_docref(NULL TSRMLS_CC, E_WARNING, "The server requested authentication method unknown to the client [%s]", requested_protocol);
-			SET_CLIENT_ERROR(*conn->error_info, CR_NOT_IMPLEMENTED, UNKNOWN_SQLSTATE, "The server requested authentication method umknown to the client");
+			SET_CLIENT_ERROR(*conn->error_info, CR_NOT_IMPLEMENTED, UNKNOWN_SQLSTATE, "The server requested authentication method unknown to the client");
 			goto end;
 		}
 		DBG_INF("plugin found");
@@ -811,6 +809,7 @@ MYSQLND_METHOD(mysqlnd_conn_data, connect_handshake)(MYSQLND_CONN_DATA * conn,
 	{
 		goto err;
 	}
+	memset(conn->upsert_status, 0, sizeof(*conn->upsert_status));
 	conn->upsert_status->warning_count = 0;
 	conn->upsert_status->server_status = greet_packet->server_status;
 	conn->upsert_status->affected_rows = 0;
@@ -1183,6 +1182,7 @@ MYSQLND_METHOD(mysqlnd_conn_data, send_query)(MYSQLND_CONN_DATA * conn, const ch
 	enum_func_status ret = FAIL;
 	DBG_ENTER("mysqlnd_conn_data::send_query");
 	DBG_INF_FMT("conn=%llu query=%s", conn->thread_id, query);
+	DBG_INF_FMT("conn->server_status=%u", conn->upsert_status->server_status);
 
 	if (PASS == conn->m->local_tx_start(conn, this_func TSRMLS_CC)) {
 		ret = conn->m->simple_command(conn, COM_QUERY, (zend_uchar *) query, query_len,
@@ -1193,6 +1193,7 @@ MYSQLND_METHOD(mysqlnd_conn_data, send_query)(MYSQLND_CONN_DATA * conn, const ch
 		}
 		conn->m->local_tx_end(conn, this_func, ret TSRMLS_CC);
 	}
+	DBG_INF_FMT("conn->server_status=%u", conn->upsert_status->server_status);
 	DBG_RETURN(ret);
 }
 /* }}} */
@@ -1208,6 +1209,7 @@ MYSQLND_METHOD(mysqlnd_conn_data, reap_query)(MYSQLND_CONN_DATA * conn TSRMLS_DC
 	DBG_ENTER("mysqlnd_conn_data::reap_query");
 	DBG_INF_FMT("conn=%llu", conn->thread_id);
 
+	DBG_INF_FMT("conn->server_status=%u", conn->upsert_status->server_status);
 	if (PASS == conn->m->local_tx_start(conn, this_func TSRMLS_CC)) {
 		if (state <= CONN_READY || state == CONN_QUIT_SENT) {
 			php_error_docref(NULL TSRMLS_CC, E_WARNING, "Connection not opened, clear or has been closed");
@@ -1218,6 +1220,7 @@ MYSQLND_METHOD(mysqlnd_conn_data, reap_query)(MYSQLND_CONN_DATA * conn TSRMLS_DC
 
 		conn->m->local_tx_end(conn, this_func, ret TSRMLS_CC);
 	}
+	DBG_INF_FMT("conn->server_status=%u", conn->upsert_status->server_status);
 	DBG_RETURN(ret);
 }
 /* }}} */
@@ -1225,6 +1228,7 @@ MYSQLND_METHOD(mysqlnd_conn_data, reap_query)(MYSQLND_CONN_DATA * conn TSRMLS_DC
 
 #include "php_network.h"
 
+/* {{{ mysqlnd_stream_array_to_fd_set */
 MYSQLND ** mysqlnd_stream_array_check_for_readiness(MYSQLND ** conn_array TSRMLS_DC)
 {
 	int cnt = 0;
@@ -1255,14 +1259,17 @@ MYSQLND ** mysqlnd_stream_array_check_for_readiness(MYSQLND ** conn_array TSRMLS
 	}
 	return ret;
 }
+/* }}} */
 
 
-/* {{{ stream_select mysqlnd_stream_array_to_fd_set functions */
+/* {{{ mysqlnd_stream_array_to_fd_set */
 static int mysqlnd_stream_array_to_fd_set(MYSQLND ** conn_array, fd_set * fds, php_socket_t * max_fd TSRMLS_DC)
 {
 	php_socket_t this_fd;
-	int cnt = 0;
+	php_stream *stream = NULL;
+	unsigned int cnt = 0;
 	MYSQLND **p = conn_array;
+	DBG_ENTER("mysqlnd_stream_array_to_fd_set");
 
 	while (*p) {
 		/* get the fd.
@@ -1270,7 +1277,9 @@ static int mysqlnd_stream_array_to_fd_set(MYSQLND ** conn_array, fd_set * fds, p
 		 * when casting.  It is only used here so that the buffered data warning
 		 * is not displayed.
 		 * */
-		if (SUCCESS == php_stream_cast((*p)->data->net->data->m.get_stream((*p)->data->net TSRMLS_CC), PHP_STREAM_AS_FD_FOR_SELECT | PHP_STREAM_CAST_INTERNAL,
+		stream = (*p)->data->net->data->m.get_stream((*p)->data->net TSRMLS_CC);
+		DBG_INF_FMT("conn=%llu stream=%p", (*p)->data->thread_id, stream);
+		if (stream != NULL && SUCCESS == php_stream_cast(stream, PHP_STREAM_AS_FD_FOR_SELECT | PHP_STREAM_CAST_INTERNAL,
 										(void*)&this_fd, 1) && this_fd >= 0) {
 
 			PHP_SAFE_FD_SET(this_fd, fds);
@@ -1282,20 +1291,25 @@ static int mysqlnd_stream_array_to_fd_set(MYSQLND ** conn_array, fd_set * fds, p
 		}
 		p++;
 	}
-	return cnt ? 1 : 0;
+	DBG_RETURN(cnt ? 1 : 0);
 }
+/* }}} */
 
+
+/* {{{ mysqlnd_stream_array_from_fd_set */
 static int mysqlnd_stream_array_from_fd_set(MYSQLND ** conn_array, fd_set * fds TSRMLS_DC)
 {
 	php_socket_t this_fd;
+	php_stream *stream = NULL;
 	int ret = 0;
 	zend_bool disproportion = FALSE;
-
-
 	MYSQLND **fwd = conn_array, **bckwd = conn_array;
+	DBG_ENTER("mysqlnd_stream_array_from_fd_set");
 
 	while (*fwd) {
-		if (SUCCESS == php_stream_cast((*fwd)->data->net->data->m.get_stream((*fwd)->data->net TSRMLS_CC), PHP_STREAM_AS_FD_FOR_SELECT | PHP_STREAM_CAST_INTERNAL,
+		stream = (*fwd)->data->net->data->m.get_stream((*fwd)->data->net TSRMLS_CC);
+		DBG_INF_FMT("conn=%llu stream=%p", (*fwd)->data->thread_id, stream);
+		if (stream != NULL && SUCCESS == php_stream_cast(stream, PHP_STREAM_AS_FD_FOR_SELECT | PHP_STREAM_CAST_INTERNAL,
 										(void*)&this_fd, 1) && this_fd >= 0) {
 			if (PHP_SAFE_FD_ISSET(this_fd, fds)) {
 				if (disproportion) {
@@ -1312,7 +1326,7 @@ static int mysqlnd_stream_array_from_fd_set(MYSQLND ** conn_array, fd_set * fds 
 	}
 	*bckwd = NULL;/* NULL-terminate the list */
 
-	return ret;
+	DBG_RETURN(ret);
 }
 /* }}} */
 
@@ -1326,7 +1340,7 @@ static int mysqlnd_stream_array_from_fd_set(MYSQLND ** conn_array, fd_set * fds 
 
 /* {{{ _mysqlnd_poll */
 PHPAPI enum_func_status
-_mysqlnd_poll(MYSQLND **r_array, MYSQLND **e_array, MYSQLND ***dont_poll, long sec, long usec, uint * desc_num TSRMLS_DC)
+_mysqlnd_poll(MYSQLND **r_array, MYSQLND **e_array, MYSQLND ***dont_poll, long sec, long usec, int * desc_num TSRMLS_DC)
 {
 	struct timeval	tv;
 	struct timeval *tv_p = NULL;
@@ -1592,6 +1606,7 @@ MYSQLND_METHOD(mysqlnd_conn_data, escape_string)(MYSQLND_CONN_DATA * const conn,
 	DBG_INF_FMT("conn=%llu", conn->thread_id);
 
 	if (PASS == conn->m->local_tx_start(conn, this_func TSRMLS_CC)) {
+		DBG_INF_FMT("server_status=%u", conn->upsert_status->server_status);
 		if (conn->upsert_status->server_status & SERVER_STATUS_NO_BACKSLASH_ESCAPES) {
 			ret = mysqlnd_cset_escape_quotes(conn->charset, newstr, escapestr, escapestr_len TSRMLS_CC);
 		} else {
@@ -2236,7 +2251,6 @@ MYSQLND_METHOD(mysqlnd_conn_data, change_user)(MYSQLND_CONN_DATA * const conn,
 	}
 	if (!db) {
 		db = "";
-
 	}
 
 	/* XXX: passwords that have \0 inside work during auth, but in this case won't work with change user */

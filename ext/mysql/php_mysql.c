@@ -2,7 +2,7 @@
    +----------------------------------------------------------------------+
    | PHP Version 5                                                        |
    +----------------------------------------------------------------------+
-   | Copyright (c) 1997-2013 The PHP Group                                |
+   | Copyright (c) 1997-2014 The PHP Group                                |
    +----------------------------------------------------------------------+
    | This source file is subject to version 3.01 of the PHP license,      |
    | that is bundled with this package in the file LICENSE, and is        |
@@ -1922,7 +1922,7 @@ PHP_FUNCTION(mysql_result)
 
 /*
 johannes TODO:
-Do 2 zend_parse_paramters calls instead of type "z" and switch below
+Do 2 zend_parse_parameters calls instead of type "z" and switch below
 Q: String or long first?
 */
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "rl|z", &result, &row, &field) == FAILURE) {

@@ -2,7 +2,7 @@
    +----------------------------------------------------------------------+
    | PHP Version 5                                                        |
    +----------------------------------------------------------------------+
-   | Copyright (c) 1997-2013 The PHP Group                                |
+   | Copyright (c) 1997-2014 The PHP Group                                |
    +----------------------------------------------------------------------+
    | This source file is subject to version 3.01 of the PHP license,      |
    | that is bundled with this package in the file LICENSE, and is        |
@@ -28,6 +28,9 @@
 #endif
 
 #define PHP_SESSION_API 20020330
+
+/* To check php_session_valid_key()/php_session_reset_id() */
+#define PHP_SESSION_STRICT 1
 
 #define PS_OPEN_ARGS void **mod_data, const char *save_path, const char *session_name TSRMLS_DC
 #define PS_CLOSE_ARGS void **mod_data TSRMLS_DC
@@ -75,7 +78,7 @@ typedef struct ps_module_struct {
 	#x, ps_open_##x, ps_close_##x, ps_read_##x, ps_write_##x, \
 	 ps_delete_##x, ps_gc_##x, php_session_create_id
 
-/* SID enabled module handler definitions */
+/* SID creation enabled module handler definitions */
 #define PS_FUNCS_SID(x) \
 	PS_OPEN_FUNC(x); \
 	PS_CLOSE_FUNC(x); \
@@ -175,6 +178,9 @@ typedef struct _php_ps_globals {
 	smart_str rfc1867_name;    /* session.upload_progress.name */
 	long rfc1867_freq;         /* session.upload_progress.freq */
 	double rfc1867_min_freq;   /* session.upload_progress.min_freq */
+
+	zend_bool use_strict_mode; /* whether or not PHP accepts unknown session ids */
+	unsigned char session_data_hash[16]; /* binary MD5 hash length */
 } php_ps_globals;
 
 typedef php_ps_globals zend_ps_globals;
@@ -229,6 +235,9 @@ PHPAPI void php_session_start(TSRMLS_D);
 
 PHPAPI ps_module *_php_find_ps_module(char *name TSRMLS_DC);
 PHPAPI const ps_serializer *_php_find_ps_serializer(char *name TSRMLS_DC);
+
+PHPAPI int php_session_valid_key(const char *key);
+PHPAPI void php_session_reset_id(TSRMLS_D);
 
 #define PS_ADD_VARL(name,namelen) do {										\
 	php_add_session_var(name, namelen TSRMLS_CC);							\

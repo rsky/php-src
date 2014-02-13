@@ -2,7 +2,7 @@
    +----------------------------------------------------------------------+
    | PHP Version 5                                                        |
    +----------------------------------------------------------------------+
-   | Copyright (c) 1997-2013 The PHP Group                                |
+   | Copyright (c) 1997-2014 The PHP Group                                |
    +----------------------------------------------------------------------+
    | This source file is subject to version 3.01 of the PHP license,      |
    | that is bundled with this package in the file LICENSE, and is        |
@@ -1221,8 +1221,8 @@ PHPAPI char *php_escape_html_entities_ex(unsigned char *old, size_t oldlen, size
 	const enc_to_uni *to_uni_table = NULL;
 	const entity_ht *inv_map = NULL; /* used for !double_encode */
 	/* only used if flags includes ENT_HTML_IGNORE_ERRORS or ENT_HTML_SUBSTITUTE_DISALLOWED_CHARS */
-	const unsigned char *replacement;
-	size_t replacement_len;
+	const unsigned char *replacement = NULL;
+	size_t replacement_len = 0;
 
 	if (all) { /* replace with all named entities */
 		if (CHARSET_PARTIAL_SUPPORT(charset)) {
@@ -1432,8 +1432,8 @@ encode_amp:
  */
 static void php_html_entities(INTERNAL_FUNCTION_PARAMETERS, int all)
 {
-	char *str, *hint_charset = NULL;
-	int str_len, hint_charset_len = 0;
+	char *str, *hint_charset = PHP_DEFAULT_CHARSET;
+	int str_len, hint_charset_len = sizeof(PHP_DEFAULT_CHARSET)-1;
 	size_t new_len;
 	long flags = ENT_COMPAT;
 	char *replaced;
@@ -1504,8 +1504,8 @@ PHP_FUNCTION(htmlspecialchars_decode)
    Convert all HTML entities to their applicable characters */
 PHP_FUNCTION(html_entity_decode)
 {
-	char *str, *hint_charset = NULL;
-	int str_len, hint_charset_len = 0;
+	char *str, *hint_charset = PHP_DEFAULT_CHARSET;
+	int str_len, hint_charset_len = sizeof(PHP_DEFAULT_CHARSET)-1;
 	size_t new_len = 0;
 	long quote_style = ENT_COMPAT;
 	char *replaced;
@@ -1596,7 +1596,7 @@ PHP_FUNCTION(get_html_translation_table)
 		 flags = ENT_COMPAT;
 	int doctype;
 	entity_table_opt entity_table;
-	const enc_to_uni *to_uni_table;
+	const enc_to_uni *to_uni_table = NULL;
 	char *charset_hint = NULL;
 	int charset_hint_len;
 	enum entity_charset charset;

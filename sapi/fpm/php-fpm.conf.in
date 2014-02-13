@@ -159,8 +159,8 @@ group = @php_fpm_group@
 listen = 127.0.0.1:9000
 
 ; Set listen(2) backlog.
-; Default Value: 128 (-1 on FreeBSD and OpenBSD)
-;listen.backlog = 128
+; Default Value: 65535 (-1 on FreeBSD and OpenBSD)
+;listen.backlog = 65535
 
 ; Set permissions for unix socket, if one is used. In Linux, read/write
 ; permissions must be set in order to allow connections from a web server. Many
@@ -401,7 +401,7 @@ pm.max_spare_servers = 3
 ;      - %{megabytes}M
 ;      - %{mega}M
 ;  %n: pool name
-;  %o: ouput header
+;  %o: output header
 ;      it must be associated with embraces to specify the name of the header:
 ;      - %{Content-Type}o
 ;      - %{X-Powered-By}o
